@@ -9,9 +9,9 @@ Sentiment Analysis research project.
 ### Deep learning for sentiment analysis of movie reviews
 
 Based on this research paper, I try to understand some basis about deep learning algorithms.
-The related research paper can be find here. (put the info)
+The related research paper can be find [here](http://web.stanford.edu/class/cs224d/reports/PouransariHadi.pdf).
 
 #### Binary classification approach
 
-The data is not stored in this repository but can be found in the website Kaggle. (put the info)
+The data is not stored in this repository but can be found in the website [Kaggle](https://www.kaggle.com/c/word2vec-nlp-tutorial/data).
 
