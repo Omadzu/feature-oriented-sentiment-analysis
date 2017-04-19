@@ -1,5 +1,5 @@
 # Self ignored folders / files
-reviews/
+data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
