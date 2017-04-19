@@ -1,5 +1,6 @@
 # Self ignored folders / files
 data/
+deep-learning-for-sentiment-analysis-of-movie-review/binary-classification-approches/results
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
