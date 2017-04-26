@@ -5,6 +5,7 @@ Created on Mon Apr 24 10:08:26 2017
 @author: Ophelie
 From: https://www.kaggle.com/c/word2vec-nlp-tutorial
 
+Word2Vec + Averaging + Random Forest Classifier
 
 Summary:
     - Collect, clean and parse data
