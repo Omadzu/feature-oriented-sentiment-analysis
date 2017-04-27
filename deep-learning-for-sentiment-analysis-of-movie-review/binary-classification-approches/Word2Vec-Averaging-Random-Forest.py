@@ -14,6 +14,7 @@ Summary:
     used inside the review and is capable of deducing similarity and
     dissimilarity between words with a certain accuracy
     - Use a Random Forest to predict values based on previous Word2Vec
+    - Display a ROC Curve for Cross Validation using KFol (10 folds)
 """
 
 import os.path
@@ -24,6 +25,7 @@ import multiprocessing as mp
 import time
 import logging
 from itertools import chain
+from scipy import interp
 
 # Download text data sets, including stop words
 from nltk.corpus import stopwords
@@ -39,9 +41,12 @@ from gensim.models import word2vec, Word2Vec
 from sklearn.ensemble import RandomForestClassifier
 
 # ROC curve and confusion matrix and classification report
-from sklearn.metrics import roc_curve, auc, confusion_matrix, \
+from sklearn.metrics import roc_curve, auc, confusion_matrix,\
     classification_report
 import matplotlib.pyplot as plt
+
+# Method of Cross Validation : K-Fold
+from sklearn.model_selection import StratifiedKFold
 
 """ Global variables """
 # Path to set
@@ -55,6 +60,12 @@ word2vec_prediction_results_path = "../../results/binary-classification-approche
 tokenizer = nltk.data.load('tokenizers/punkt/english.pickle')
 remove_stopwords = True
 
+# Some parameters for Word2Vec
+num_features = 300            # Word vector dimensionality
+min_word_count = 40           # Minimum word count
+num_workers = mp.cpu_count()  # Number of threads to run in parallel
+context = 10                  # Context window size
+downsampling = 1e-3           # Downsample setting for frequent words
 
 """ Methods """
 
@@ -199,10 +210,12 @@ def getAvgFeatureVecs(reviews, model, num_features):
 
 if __name__ == '__main__':
 
+    whole_time = time.time()
+    
     # Config of logging module
     logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s',
                         level=logging.DEBUG)
-    
+
     # Read data from files
     train = pd.read_csv(train_set_path, header=0,
                         delimiter="\t", quoting=3, encoding="utf-8")
@@ -262,13 +275,6 @@ if __name__ == '__main__':
         # ======================================================
 
         start_time = time.time()
-
-        # Set values for various parameters
-        num_features = 300            # Word vector dimensionality
-        min_word_count = 40           # Minimum word count
-        num_workers = mp.cpu_count()  # Number of threads to run in parallel
-        context = 10                  # Context window size
-        downsampling = 1e-3           # Downsample setting for frequent words
 
         # Initialize and train the model (take some time)
         logging.info("Training the model...")
@@ -350,64 +356,147 @@ if __name__ == '__main__':
     # using the functions we defined above. Notice that we now use stop word
     # removal.
 
-    # Averaging vectors for training set
-    logging.info("Creating average feature vectors for the training reviews\
-                 set")
+    mean_tpr = 0.0
+    mean_fpr = np.linspace(0, 1, 100)
+    colors = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9"]
+    lw = 2
 
-    start_time = time.time()
+    # Divide the labeled set into training and testing set using stratified
+    # K-fold
+    # see : http://scikit-learn.org/stable/modules/cross_validation.html
+    skfold = StratifiedKFold(n_splits=10)
 
-    # Spread the calculation for the train set
-    logging.info("Parsing sentences from training set")
-    mapResults = calculateParallel(review_to_wordlist, train["review"])
-    processProgress(mapResults)
-    clean_train_reviews = mapResults.get()
+    # Cross Validation based on KFold
+    # see : http://scikit-learn.org/stable/auto_examples/model_selection/plot_roc_crossval.html#sphx-glr-auto-examples-model-selection-plot-roc-crossval-py
+    index = 0
+    for train_index, test_index in skfold.split(train["review"],
+                                                train["sentiment"]):
 
-    total_time = time.time() - start_time
-    processTime(total_time, "Clean training reviews")
+        logging.debug("[CROSS VALIDATION] Fold n: %d" % index)
 
-    start_time = time.time()
+        # Define the color of the curve for this fold
+        color = colors[index]
 
-    trainDataVecs = getAvgFeatureVecs(clean_train_reviews, model, num_features)
+        # Divide in training and testing set
+        train_reviews_set, test_reviews_set =\
+            train["review"][train_index], train["review"][test_index]
+        train_polarity_set, test_polarity_set =\
+            train["sentiment"][train_index], train["sentiment"][test_index]
 
-    total_time = time.time() - start_time
-    processTime(total_time, "Calculate average feature vector for training\
-                set")
+        ####################################
+        # Averaging vectors for training set
+        #
+        logging.info("Creating average feature vectors for the training\
+                     reviews set")
 
-    # Averaging vectors for training set
-    logging.info("Creating average feature vectors for the testing reviews\
-                 set")
+        # Spread the calculation for the training set
+        stepTitle = "Parsing and cleaning reviews from training set"
+        logging.info(stepTitle)
 
-    start_time = time.time()
+        start_time = time.time()
+        mapResults = calculateParallel(review_to_wordlist, train_reviews_set)
+        processProgress(mapResults)
+        clean_train_reviews = mapResults.get()
 
-    # Spread the calculation for the test set
-    logging.info("Parsing sentences from testing set")
-    mapResults = calculateParallel(review_to_wordlist, test["review"])
-    processProgress(mapResults)
-    clean_test_reviews = mapResults.get()
+        total_time = time.time() - start_time
+        processTime(total_time, stepTitle)
 
-    total_time = time.time() - start_time
-    processTime(total_time, "Clean testing reviews")
+        # Averaging step
+        stepTitle = "Averaging step for the training set"
+        logging.info(stepTitle)
+        start_time = time.time()
+        train_data_vecs = getAvgFeatureVecs(clean_train_reviews, model,
+                                            num_features)
+        total_time = time.time() - start_time
+        processTime(total_time, stepTitle)
 
-    testDataVecs = getAvgFeatureVecs(clean_test_reviews, model, num_features)
+        ####################################
+        # Averaging vectors for testing set
+        #
+        logging.info("Creating average feature vectors for the testing\
+                     reviews set")
 
-    total_time = time.time() - start_time
-    processTime(total_time, "Calculate average feature vector for test set")
+        # Spread the calculation for the training set
+        stepTitle = "Parsing and cleaning reviews from testing set"
+        logging.info(stepTitle)
 
-    # Fit a random forest to the training data, using 100 trees
-    forest = RandomForestClassifier(n_estimators=100)
+        start_time = time.time()
+        mapResults = calculateParallel(review_to_wordlist, test_reviews_set)
+        processProgress(mapResults)
+        clean_test_reviews = mapResults.get()
 
-    logging.info("Fitting a random forest to labeled training data...")
+        total_time = time.time() - start_time
+        processTime(total_time, stepTitle)
 
-    start_time = time.time()
+        # Averaging step
+        stepTitle = "Averaging step for the testing set"
+        logging.info(stepTitle)
+        start_time = time.time()
+        test_data_vecs = getAvgFeatureVecs(clean_test_reviews, model,
+                                           num_features)
+        total_time = time.time() - start_time
+        processTime(total_time, stepTitle)
 
-    forest = forest.fit(trainDataVecs, train["sentiment"])
+        # Fit random forest to the training data, using 100 trees
+        stepTitle = "Fitting a random forest to labeled training data..."
+        logging.info(stepTitle)
 
-    total_time = time.time() - start_time
-    processTime(total_time, "Fitting the forest")
+        forest = RandomForestClassifier(n_estimators=100)
 
-    # Test & extract results
-    result = forest.predict(testDataVecs)
+        start_time = time.time()
+        forest = forest.fit(train_data_vecs, train_polarity_set)
+        total_time = time.time() - start_time
+        processTime(total_time, stepTitle)
 
-    # Write the test results
-    output = pd.DataFrame(data={"id": test["id"], "sentiment": result})
-    output.to_csv(word2vec_prediction_results_path, index=False, quoting=3)
+        # Prediction step on the vectors of the testing set
+        predictions = forest.predict(test_data_vecs)
+        actual = tuple(test_polarity_set)
+
+        false_positive_rate, true_positive_rate, thresholds = \
+            roc_curve(actual, forest.predict_proba(test_data_vecs)[:, 1])
+
+        mean_tpr += interp(mean_fpr, false_positive_rate, true_positive_rate)
+        mean_tpr[0] = 0.0
+
+        roc_auc = auc(false_positive_rate, true_positive_rate)
+        plt.plot(false_positive_rate, true_positive_rate, lw=lw, color=color,
+                 label="ROC fold %d (area = %0.2f)" % (index, roc_auc))
+
+        logging.debug("False positive rate :\n %s" % (false_positive_rate,))
+        logging.debug("True positive rate :\n %s" % (true_positive_rate,))
+        logging.debug("Thresholds :\n %s" % (thresholds,))
+        logging.debug("ROC_AUC : %f" % roc_auc)
+
+        # Display the confusion matrix
+        matrix = confusion_matrix(actual, predictions)
+        logging.info("Confusion matrix :\n %s" % (matrix,))
+
+        # Display the classification report
+        report = classification_report(actual, predictions)
+        logging.info("Classification report :\n %s" % (report,))
+
+        # raw_input("Press Enter to continue...")
+
+        # Counter
+        index += 1
+
+    logging.info("Predictions complete on the %d test sets !" % (index))
+
+    plt.plot([0, 1], [0, 1], linestyle='--', lw=lw, color='k')
+
+    mean_tpr /= skfold.get_n_splits(train["review"], train["sentiment"])
+    mean_tpr[-1] = 1.0
+    mean_auc = auc(mean_fpr, mean_tpr)
+    plt.plot(mean_fpr, mean_tpr, color='g', linestyle='--',
+             label='Mean ROC (area = %0.2f)' % mean_auc, lw=lw)
+
+    plt.xlim([-0.05, 1.05])
+    plt.ylim([-0.05, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver Operating Characteristic')
+    plt.legend(loc="lower right")
+    plt.show()
+
+    total_time = time.time() - whole_time
+    processTime(total_time, "Whole time to process the algorithm")
