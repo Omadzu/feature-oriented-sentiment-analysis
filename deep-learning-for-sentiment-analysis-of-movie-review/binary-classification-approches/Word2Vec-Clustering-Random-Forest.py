@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Apr 24 10:08:26 2017
+Created on Thu Apr 27 15:35:49 2017
 
 @author: Ophelie
 From: https://www.kaggle.com/c/word2vec-nlp-tutorial
 
-Word2Vec + Averaging + Random Forest Classifier
+Word2Vec + Clustering + Random Forest Classifier
 
 Summary:
     - Collect, clean and parse data
@@ -37,6 +37,9 @@ import re
 # Word2Vec
 from gensim.models import word2vec, Word2Vec
 
+# Kmeans
+from sklearn.cluster import KMeans
+
 # Random forest
 from sklearn.ensemble import RandomForestClassifier
 
@@ -54,7 +57,6 @@ train_set_path = "../../data/labeledTrainData.tsv"
 test_set_path = "../../data/testData.tsv"
 unlabeled_train_set_path = "../../data/unlabeledTrainData.tsv"
 word2vec_model_path = "../../results/binary-classification-approches/300features_40minwords_10context"
-word2vec_prediction_results_path = "../../results/binary-classification-approches/Word2Vec_AverageVectors.csv"
 
 # Load the punkt tokenizer
 tokenizer = nltk.data.load('tokenizers/punkt/english.pickle')
@@ -155,63 +157,30 @@ def processProgress(expectedResults):
     logging.info("Distributed calculation finished !")
 
 
-def makeFeatureVec(words, model, num_features):
-    # Function to average all of the word vectors in a given
-    # paragraph
-    # words : words composing the review/paragraph
+def create_bag_of_centroids(wordlist, word_centroid_map):
+    # The number of clusters is equal to the highest cluster index
+    # in the word / centroid map
+    num_centroids = max(word_centroid_map.values()) + 1
 
-    # Pre-initialize an empty numpy array (for speed)
-    featureVec = np.zeros((num_features,), dtype="float32")
+    # Pre-allocate the bag of centroids vector (for speed)
+    bag_of_centroids = np.zeros(num_centroids, dtype="float32")
 
-    nwords = 0.
+    # Loop over the words in the review. If the word is in the vocabulary,
+    # find which cluster it belongs to, and increment that cluster count
+    # by one
+    for word in wordlist:
+        if word in word_centroid_map:
+            index = word_centroid_map[word]
+            bag_of_centroids[index] += 1
 
-    # Index2word is a list that contains the names of the words in
-    # the model's vocabulary. Convert it to a set, for speed
-    index2word_set = set(model.wv.index2word)
-
-    # Loop over each word in the review and, if it is in the model's
-    # vocabulary, add its feature vector to the total
-    for word in words:
-        if word in index2word_set:
-            nwords = nwords + 1.
-            featureVec = np.add(featureVec, model[word])
-
-    # Divide the result by the number of words to get the average
-    featureVec = np.divide(featureVec, nwords)
-    return featureVec
-
-
-def getAvgFeatureVecs(reviews, model, num_features):
-    # Given a set of reviews (each one a list of words), calculate
-    # the average feature vector for each one and return a 2D numpy array
-
-    # Initialize a counter
-    counter = 0.
-
-    # Preallocate a 2D numpy array, for speed
-    reviewFeatureVecs = np.zeros((len(reviews), num_features), dtype="float32")
-
-    # Loop through the reviews
-    for review in reviews:
-
-        # Print a status message every 1000th review
-        if counter % 1000. == 0.:
-            logging.info("Review %d of %d" % (counter, len(reviews)))
-
-        # Call the function that makes average feature vectors
-        reviewFeatureVecs[counter] = makeFeatureVec(review, model,
-                                                    num_features)
-
-        # Increment the counter
-        counter = counter + 1.
-
-    return reviewFeatureVecs
+    # Return the "bag of centroids"
+    return bag_of_centroids
 
 
 if __name__ == '__main__':
 
     whole_time = time.time()
-    
+
     # Config of logging module
     logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s',
                         level=logging.DEBUG)
@@ -341,20 +310,49 @@ if __name__ == '__main__':
     logging.debug("Vector for the word 'flower' : %s" % (model["flower"],))
 
     # ======================================================
-    # Vector Averaging
+    # Vector Quantization
     # ======================================================
 
-    # Reviews do not have the same length. Have to find a way to take
-    # individual word vectors and transform them into a feature set which has
-    # the same length for every review
-    # Each word is a vector in 300-dimensional space, we can use vector
-    # operations to combine the words in each review. Here we try vector
-    # averaging, we average the word vectors in a given review
+    # Word2Vec creates clusters of semantically related words, so we can
+    # exploit the similarity of words within a cluster. We find centers
+    # of the word clusters with K-Means
 
-    # ****************************************************************
-    # Calculate average feature vectors for training and testing sets,
-    # using the functions we defined above. Notice that we now use stop word
-    # removal.
+    # Set "k" (num_clusters) to be 1/5th of the vocabulary size, or an
+    # average of 5 words per cluster
+    word_vectors = model.wv.syn0
+    num_clusters = word_vectors.shape[0] / 5
+
+#        logging.debug(word_vectors)
+    logging.debug(num_clusters)
+
+    # Initialize a k-means object and use it to extract centroids
+    stepTitle = "Extract centroids"
+    logging.info(stepTitle)
+
+    start_time = time.time()
+    kmeans_clustering = KMeans(n_clusters=num_clusters)
+
+    # Sometimes Index error
+    idx = kmeans_clustering.fit_predict(word_vectors)
+
+    total_time = time.time() - start_time
+    processTime(total_time, stepTitle)
+
+    # Create a word / index dictionary, mapping each vocabulary word to
+    # a cluster number
+    word_centroid_map = dict(zip(model.wv.index2word, idx))
+
+#    # For the first 10 clusters
+#    for cluster in xrange(0, 10):
+#        # Print the cluster number
+#        logging.debug("Cluster %d" % cluster)
+#
+#        # Find all the words for that cluster number, and print them out
+#        words = []
+#        for i in xrange(0, len(word_centroid_map.values())):
+#            if(word_centroid_map.values()[i] == cluster):
+#                words.append(word_centroid_map.keys()[i])
+#        logging.debug(words)
 
     forest = RandomForestClassifier(n_estimators=100)
     mean_tpr = 0.0
@@ -384,12 +382,6 @@ if __name__ == '__main__':
         train_polarity_set, test_polarity_set =\
             train["sentiment"][train_index], train["sentiment"][test_index]
 
-        ####################################
-        # Averaging vectors for training set
-        #
-        logging.info("Creating average feature vectors for the training\
-                     reviews set")
-
         # Spread the calculation for the training set
         stepTitle = "Parsing and cleaning reviews from training set"
         logging.info(stepTitle)
@@ -402,22 +394,7 @@ if __name__ == '__main__':
         total_time = time.time() - start_time
         processTime(total_time, stepTitle)
 
-        # Averaging step
-        stepTitle = "Averaging step for the training set"
-        logging.info(stepTitle)
-        start_time = time.time()
-        train_data_vecs = getAvgFeatureVecs(clean_train_reviews, model,
-                                            num_features)
-        total_time = time.time() - start_time
-        processTime(total_time, stepTitle)
-
-        ####################################
-        # Averaging vectors for testing set
-        #
-        logging.info("Creating average feature vectors for the testing\
-                     reviews set")
-
-        # Spread the calculation for the training set
+        # Spread the calculation for the testing set
         stepTitle = "Parsing and cleaning reviews from testing set"
         logging.info(stepTitle)
 
@@ -429,30 +406,45 @@ if __name__ == '__main__':
         total_time = time.time() - start_time
         processTime(total_time, stepTitle)
 
-        # Averaging step
-        stepTitle = "Averaging step for the testing set"
-        logging.info(stepTitle)
-        start_time = time.time()
-        test_data_vecs = getAvgFeatureVecs(clean_test_reviews, model,
-                                           num_features)
-        total_time = time.time() - start_time
-        processTime(total_time, stepTitle)
+        # Pre-allocate an array for the training set bags of centroids (for
+        # speed)
+        train_centroids = np.zeros((train_reviews_set.size, num_clusters),
+                                   dtype="float32")
+
+        # Transform the training set reviews into bags of centroids
+        counter = 0
+        for review in clean_train_reviews:
+            train_centroids[counter] = create_bag_of_centroids(
+                    review,
+                    word_centroid_map)
+            counter += 1
+
+        # Repeat for test reviews
+        test_centroids = np.zeros((test_reviews_set.size, num_clusters),
+                                  dtype="float32")
+
+        counter = 0
+        for review in clean_test_reviews:
+            test_centroids[counter] = create_bag_of_centroids(
+                    review,
+                    word_centroid_map)
+            counter += 1
 
         # Fit random forest to the training data, using 100 trees
         stepTitle = "Fitting a random forest to labeled training data..."
         logging.info(stepTitle)
 
         start_time = time.time()
-        forest = forest.fit(train_data_vecs, train_polarity_set)
+        forest = forest.fit(train_centroids, train_polarity_set)
         total_time = time.time() - start_time
         processTime(total_time, stepTitle)
 
         # Prediction step on the vectors of the testing set
-        predictions = forest.predict(test_data_vecs)
+        predictions = forest.predict(test_centroids)
         actual = tuple(test_polarity_set)
 
         false_positive_rate, true_positive_rate, thresholds = \
-            roc_curve(actual, forest.predict_proba(test_data_vecs)[:, 1])
+            roc_curve(actual, forest.predict_proba(test_centroids)[:, 1])
 
         mean_tpr += interp(mean_fpr, false_positive_rate, true_positive_rate)
         mean_tpr[0] = 0.0
