@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Apr 24 10:08:26 2017
+Created on Thu Apr 27 15:35:49 2017
 
 @author: Ophelie
 From: https://www.kaggle.com/c/word2vec-nlp-tutorial
 
-Word2Vec + Averaging + Random Forest Classifier
+Word2Vec + Clustering + Random Forest Classifier
 
 Summary:
     - Collect, clean and parse data
@@ -36,6 +36,9 @@ import re
 
 # Word2Vec
 from gensim.models import word2vec, Word2Vec
+
+# Kmeans
+from sklearn.cluster import KMeans
 
 # Random forest
 from sklearn.ensemble import RandomForestClassifier
@@ -155,57 +158,24 @@ def processProgress(expectedResults):
     logging.info("Distributed calculation finished !")
 
 
-def makeFeatureVec(words, model, num_features):
-    # Function to average all of the word vectors in a given
-    # paragraph
-    # words : words composing the review/paragraph
+def create_bag_of_centroids(wordlist, word_centroid_map):
+    # The number of clusters is equal to the highest cluster index
+    # in the word / centroid map
+    num_centroids = max(word_centroid_map.values()) + 1
 
-    # Pre-initialize an empty numpy array (for speed)
-    featureVec = np.zeros((num_features,), dtype="float32")
+    # Pre-allocate the bag of centroids vector (for speed)
+    bag_of_centroids = np.zeros(num_centroids, dtype="float32")
 
-    nwords = 0.
+    # Loop over the words in the review. If the word is in the vocabulary,
+    # find which cluster it belongs to, and increment that cluster count
+    # by one
+    for word in wordlist:
+        if word in word_centroid_map:
+            index = word_centroid_map[word]
+            bag_of_centroids[index] += 1
 
-    # Index2word is a list that contains the names of the words in
-    # the model's vocabulary. Convert it to a set, for speed
-    index2word_set = set(model.wv.index2word)
-
-    # Loop over each word in the review and, if it is in the model's
-    # vocabulary, add its feature vector to the total
-    for word in words:
-        if word in index2word_set:
-            nwords = nwords + 1.
-            featureVec = np.add(featureVec, model[word])
-
-    # Divide the result by the number of words to get the average
-    featureVec = np.divide(featureVec, nwords)
-    return featureVec
-
-
-def getAvgFeatureVecs(reviews, model, num_features):
-    # Given a set of reviews (each one a list of words), calculate
-    # the average feature vector for each one and return a 2D numpy array
-
-    # Initialize a counter
-    counter = 0.
-
-    # Preallocate a 2D numpy array, for speed
-    reviewFeatureVecs = np.zeros((len(reviews), num_features), dtype="float32")
-
-    # Loop through the reviews
-    for review in reviews:
-
-        # Print a status message every 1000th review
-        if counter % 1000. == 0.:
-            logging.info("Review %d of %d" % (counter, len(reviews)))
-
-        # Call the function that makes average feature vectors
-        reviewFeatureVecs[counter] = makeFeatureVec(review, model,
-                                                    num_features)
-
-        # Increment the counter
-        counter = counter + 1.
-
-    return reviewFeatureVecs
+    # Return the "bag of centroids"
+    return bag_of_centroids
 
 
 if __name__ == '__main__':
@@ -341,161 +311,196 @@ if __name__ == '__main__':
     logging.debug("Vector for the word 'flower' : %s" % (model["flower"],))
 
     # ======================================================
-    # Vector Averaging
+    # Vector Quantization
     # ======================================================
 
-    # Reviews do not have the same length. Have to find a way to take
-    # individual word vectors and transform them into a feature set which has
-    # the same length for every review
-    # Each word is a vector in 300-dimensional space, we can use vector
-    # operations to combine the words in each review. Here we try vector
-    # averaging, we average the word vectors in a given review
+    # Word2Vec creates clusters of semantically related words, so we can
+    # exploit the similarity of words within a cluster. We find centers
+    # of the word clusters with K-Means
 
-    # ****************************************************************
-    # Calculate average feature vectors for training and testing sets,
-    # using the functions we defined above. Notice that we now use stop word
-    # removal.
+    # Set "k" (num_clusters) to be 1/5th of the vocabulary size, or an
+    # average of 5 words per cluster
+    word_vectors = model.wv.syn0
+    num_clusters = word_vectors.shape[0] / 5
+
+    logging.debug(word_vectors)
+    logging.debug(num_clusters)
+
+    # Initialize a k-means object and use it to extract centroids
+    kmeans_clustering = KMeans(n_clusters=num_clusters)
+    idx = kmeans_clustering.fit_predict(word_vectors)  # Sometimes Index error
+
+    # Create a word / index dictionary, mapping each vocabulary word to
+    # a cluster number
+    word_centroid_map = dict(zip(model.wv.index2word, idx))
+
+    # For the first 10 clusters
+    for cluster in xrange(0, 10):
+        # Print the cluster number
+        logging.debug("Cluster %d" % cluster)
+
+        # Find all the words for that cluster number, and print them out
+        words = []
+        for i in xrange(0, len(word_centroid_map.values())):
+            if(word_centroid_map.values()[i] == cluster):
+                words.append(word_centroid_map.keys()[i])
+        logging.debug(words)
+
+    # Spread the calculation for the training set
+    stepTitle = "Parsing and cleaning reviews from training set"
+    logging.info(stepTitle)
+
+    start_time = time.time()
+    mapResults = calculateParallel(review_to_wordlist, train["review"])
+    processProgress(mapResults)
+    clean_train_reviews = mapResults.get()
+
+    total_time = time.time() - start_time
+    processTime(total_time, stepTitle)
+
+    # Spread the calculation for the testing set
+    stepTitle = "Parsing and cleaning reviews from testing set"
+    logging.info(stepTitle)
+
+    start_time = time.time()
+    mapResults = calculateParallel(review_to_wordlist, test["review"])
+    processProgress(mapResults)
+    clean_test_reviews = mapResults.get()
+
+    total_time = time.time() - start_time
+    processTime(total_time, stepTitle)
+
+    # Pre-allocate an array for the training set bags of centroids (for
+    # speed)
+    train_centroids = np.zeros((train["review"].size, num_clusters),
+                               dtype="float32")
+
+    # Transform the training set reviews into bags of centroids
+    counter = 0
+    for review in clean_train_reviews:
+        train_centroids[counter] = create_bag_of_centroids(review,
+                                                           word_centroid_map)
+        counter += 1
+
+    # Repeat for test reviews
+    test_centroids = np.zeros((test["review"].size, num_clusters),
+                              dtype="float32")
+
+    counter = 0
+    for review in clean_test_reviews:
+        test_centroids[counter] = create_bag_of_centroids(review,
+                                                          word_centroid_map)
+        counter += 1
+
+    # Fit a random forest and extract predictions
+    forest = RandomForestClassifier(n_estimators=100)
+
+    # Fit random forest to the training data, using 100 trees
+    stepTitle = "Fitting a random forest to labeled training data..."
+    logging.info(stepTitle)
 
     forest = RandomForestClassifier(n_estimators=100)
-    mean_tpr = 0.0
-    mean_fpr = np.linspace(0, 1, 100)
-    colors = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9"]
-    lw = 2
 
-    # Divide the labeled set into training and testing set using stratified
-    # K-fold
-    # see : http://scikit-learn.org/stable/modules/cross_validation.html
-    skfold = StratifiedKFold(n_splits=10)
+    start_time = time.time()
+    forest = forest.fit(train_centroids, train["sentiment"])
+    total_time = time.time() - start_time
+    processTime(total_time, stepTitle)
 
-    # Cross Validation based on KFold
-    # see : http://scikit-learn.org/stable/auto_examples/model_selection/plot_roc_crossval.html#sphx-glr-auto-examples-model-selection-plot-roc-crossval-py
-    index = 0
-    for train_index, test_index in skfold.split(train["review"],
-                                                train["sentiment"]):
+    result = forest.predict(test_centroids)
 
-        logging.debug("[CROSS VALIDATION] Fold n: %d" % index)
+    # Write the test results
+    output = pd.DataFrame(data={"id": test["id"], "sentiment": result})
+    output.to_csv("../../results/binary-classification-approches/BagOfCentroids.csv")
 
-        # Define the color of the curve for this fold
-        color = colors[index]
-
-        # Divide in training and testing set
-        train_reviews_set, test_reviews_set =\
-            train["review"][train_index], train["review"][test_index]
-        train_polarity_set, test_polarity_set =\
-            train["sentiment"][train_index], train["sentiment"][test_index]
-
-        ####################################
-        # Averaging vectors for training set
-        #
-        logging.info("Creating average feature vectors for the training\
-                     reviews set")
-
-        # Spread the calculation for the training set
-        stepTitle = "Parsing and cleaning reviews from training set"
-        logging.info(stepTitle)
-
-        start_time = time.time()
-        mapResults = calculateParallel(review_to_wordlist, train_reviews_set)
-        processProgress(mapResults)
-        clean_train_reviews = mapResults.get()
-
-        total_time = time.time() - start_time
-        processTime(total_time, stepTitle)
-
-        # Averaging step
-        stepTitle = "Averaging step for the training set"
-        logging.info(stepTitle)
-        start_time = time.time()
-        train_data_vecs = getAvgFeatureVecs(clean_train_reviews, model,
-                                            num_features)
-        total_time = time.time() - start_time
-        processTime(total_time, stepTitle)
-
-        ####################################
-        # Averaging vectors for testing set
-        #
-        logging.info("Creating average feature vectors for the testing\
-                     reviews set")
-
-        # Spread the calculation for the training set
-        stepTitle = "Parsing and cleaning reviews from testing set"
-        logging.info(stepTitle)
-
-        start_time = time.time()
-        mapResults = calculateParallel(review_to_wordlist, test_reviews_set)
-        processProgress(mapResults)
-        clean_test_reviews = mapResults.get()
-
-        total_time = time.time() - start_time
-        processTime(total_time, stepTitle)
-
-        # Averaging step
-        stepTitle = "Averaging step for the testing set"
-        logging.info(stepTitle)
-        start_time = time.time()
-        test_data_vecs = getAvgFeatureVecs(clean_test_reviews, model,
-                                           num_features)
-        total_time = time.time() - start_time
-        processTime(total_time, stepTitle)
-
-        # Fit random forest to the training data, using 100 trees
-        stepTitle = "Fitting a random forest to labeled training data..."
-        logging.info(stepTitle)
-
-        start_time = time.time()
-        forest = forest.fit(train_data_vecs, train_polarity_set)
-        total_time = time.time() - start_time
-        processTime(total_time, stepTitle)
-
-        # Prediction step on the vectors of the testing set
-        predictions = forest.predict(test_data_vecs)
-        actual = tuple(test_polarity_set)
-
-        false_positive_rate, true_positive_rate, thresholds = \
-            roc_curve(actual, forest.predict_proba(test_data_vecs)[:, 1])
-
-        mean_tpr += interp(mean_fpr, false_positive_rate, true_positive_rate)
-        mean_tpr[0] = 0.0
-
-        roc_auc = auc(false_positive_rate, true_positive_rate)
-        plt.plot(false_positive_rate, true_positive_rate, lw=lw, color=color,
-                 label="ROC fold %d (area = %0.2f)" % (index, roc_auc))
-
-        logging.debug("False positive rate :\n %s" % (false_positive_rate,))
-        logging.debug("True positive rate :\n %s" % (true_positive_rate,))
-        logging.debug("Thresholds :\n %s" % (thresholds,))
-        logging.debug("ROC_AUC : %f" % roc_auc)
-
-        # Display the confusion matrix
-        matrix = confusion_matrix(actual, predictions)
-        logging.info("Confusion matrix :\n %s" % (matrix,))
-
-        # Display the classification report
-        report = classification_report(actual, predictions)
-        logging.info("Classification report :\n %s" % (report,))
-
-        # raw_input("Press Enter to continue...")
-
-        # Counter
-        index += 1
-
-    logging.info("Predictions complete on the %d test sets !" % (index))
-
-    plt.plot([0, 1], [0, 1], linestyle='--', lw=lw, color='k')
-
-    mean_tpr /= skfold.get_n_splits(train["review"], train["sentiment"])
-    mean_tpr[-1] = 1.0
-    mean_auc = auc(mean_fpr, mean_tpr)
-    plt.plot(mean_fpr, mean_tpr, color='g', linestyle='--',
-             label='Mean ROC (area = %0.2f)' % mean_auc, lw=lw)
-
-    plt.xlim([-0.05, 1.05])
-    plt.ylim([-0.05, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('Receiver Operating Characteristic')
-    plt.legend(loc="lower right")
-    plt.show()
+# TODO when simple clustering is working
+#    forest = RandomForestClassifier(n_estimators=100)
+#    mean_tpr = 0.0
+#    mean_fpr = np.linspace(0, 1, 100)
+#    colors = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9"]
+#    lw = 2
+#
+#    # Divide the labeled set into training and testing set using stratified
+#    # K-fold
+#    # see : http://scikit-learn.org/stable/modules/cross_validation.html
+#    skfold = StratifiedKFold(n_splits=10)
+#
+#    # Cross Validation based on KFold
+#    # see : http://scikit-learn.org/stable/auto_examples/model_selection/plot_roc_crossval.html#sphx-glr-auto-examples-model-selection-plot-roc-crossval-py
+#    index = 0
+#    for train_index, test_index in skfold.split(train["review"],
+#                                                train["sentiment"]):
+#
+#        logging.debug("[CROSS VALIDATION] Fold n: %d" % index)
+#
+#        # Define the color of the curve for this fold
+#        color = colors[index]
+#
+#        # Divide in training and testing set
+#        train_reviews_set, test_reviews_set =\
+#            train["review"][train_index], train["review"][test_index]
+#        train_polarity_set, test_polarity_set =\
+#            train["sentiment"][train_index], train["sentiment"][test_index]
+#
+#        ## TODO clustering
+#
+#        # Fit random forest to the training data, using 100 trees
+#        stepTitle = "Fitting a random forest to labeled training data..."
+#        logging.info(stepTitle)
+#
+#        start_time = time.time()
+#        forest = forest.fit(train_data_vecs, train_polarity_set)
+#        total_time = time.time() - start_time
+#        processTime(total_time, stepTitle)
+#
+#        # Prediction step on the vectors of the testing set
+#        predictions = forest.predict(test_data_vecs)
+#        actual = tuple(test_polarity_set)
+#
+#        false_positive_rate, true_positive_rate, thresholds = \
+#            roc_curve(actual, forest.predict_proba(test_data_vecs)[:, 1])
+#
+#        mean_tpr += interp(mean_fpr, false_positive_rate, true_positive_rate)
+#        mean_tpr[0] = 0.0
+#
+#        roc_auc = auc(false_positive_rate, true_positive_rate)
+#        plt.plot(false_positive_rate, true_positive_rate, lw=lw, color=color,
+#                 label="ROC fold %d (area = %0.2f)" % (index, roc_auc))
+#
+#        logging.debug("False positive rate :\n %s" % (false_positive_rate,))
+#        logging.debug("True positive rate :\n %s" % (true_positive_rate,))
+#        logging.debug("Thresholds :\n %s" % (thresholds,))
+#        logging.debug("ROC_AUC : %f" % roc_auc)
+#
+#        # Display the confusion matrix
+#        matrix = confusion_matrix(actual, predictions)
+#        logging.info("Confusion matrix :\n %s" % (matrix,))
+#
+#        # Display the classification report
+#        report = classification_report(actual, predictions)
+#        logging.info("Classification report :\n %s" % (report,))
+#
+#        # raw_input("Press Enter to continue...")
+#
+#        # Counter
+#        index += 1
+#
+#    logging.info("Predictions complete on the %d test sets !" % (index))
+#
+#    plt.plot([0, 1], [0, 1], linestyle='--', lw=lw, color='k')
+#
+#    mean_tpr /= skfold.get_n_splits(train["review"], train["sentiment"])
+#    mean_tpr[-1] = 1.0
+#    mean_auc = auc(mean_fpr, mean_tpr)
+#    plt.plot(mean_fpr, mean_tpr, color='g', linestyle='--',
+#             label='Mean ROC (area = %0.2f)' % mean_auc, lw=lw)
+#
+#    plt.xlim([-0.05, 1.05])
+#    plt.ylim([-0.05, 1.05])
+#    plt.xlabel('False Positive Rate')
+#    plt.ylabel('True Positive Rate')
+#    plt.title('Receiver Operating Characteristic')
+#    plt.legend(loc="lower right")
+#    plt.show()
 
     total_time = time.time() - whole_time
     processTime(total_time, "Whole time to process the algorithm")
