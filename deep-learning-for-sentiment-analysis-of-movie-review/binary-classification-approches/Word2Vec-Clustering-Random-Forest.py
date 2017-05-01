@@ -46,6 +46,9 @@ from sklearn.ensemble import RandomForestClassifier
 # ROC curve and confusion matrix and classification report
 from sklearn.metrics import roc_curve, auc, confusion_matrix,\
     classification_report
+# The two following lines is only for MAC OS
+from IPython import get_ipython
+get_ipython().run_line_magic('matplotlib', 'inline')
 import matplotlib.pyplot as plt
 
 # Method of Cross Validation : K-Fold
@@ -487,6 +490,7 @@ if __name__ == '__main__':
     plt.ylabel('True Positive Rate')
     plt.title('Receiver Operating Characteristic')
     plt.legend(loc="lower right")
+    logging.debug("Showing the resulting plots")
     plt.show()
 
     total_time = time.time() - whole_time
