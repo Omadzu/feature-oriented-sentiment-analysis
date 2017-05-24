@@ -52,8 +52,8 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'FOSA'
-copyright = '2017, Ophélie Delsaux'
-author = 'Ophélie Delsaux'
+copyright = '2017, Ophelie Delsaux'
+author = 'Ophelie Delsaux'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
