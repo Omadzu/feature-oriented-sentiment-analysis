@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-@author: omadz
+Tools for the preprocessing part of the algorithm.
 """
 
 import numpy as np

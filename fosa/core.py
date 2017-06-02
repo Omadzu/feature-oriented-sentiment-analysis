@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
 
 """
-@author: omadz
+Main code of the algorithm divided into the following parts :
+
+    - preprocessing
+    - feature extraction : TODO
+    - polarity learning: TODO
+    - prediction : TODO
+    - Cross-validation : TODO
+
+There is also a word representation part (TODO) using in the feature
+extraction and polarity learning parts. 
 
 Based on the following tutorial :
     http://www.wildml.com/2015/12/implementing-a-cnn-for-text-classification-in-tensorflow/
