@@ -4,7 +4,7 @@
    contain the root `toctree` directive.
 
 .. To generate automatically doc from source code, run in docs :
-   sphinx-apidoc -f -o source/module ../module/
+   sphinx-apidoc -f -o source/fosa ../fosa/
 
 Welcome to FOSA's documentation!
 ================================
@@ -20,7 +20,7 @@ Contents
    :numbered:
 
    chapters/project_structure
-   Auto-generated documentation of FOSA <module/modules>
+   Auto-generated documentation of FOSA <fosa/modules>
 
 
 Indices and tables

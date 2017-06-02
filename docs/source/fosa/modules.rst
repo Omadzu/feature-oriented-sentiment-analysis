@@ -1,7 +1,7 @@
-module
-======
+fosa
+====
 
 .. toctree::
    :maxdepth: 4
 
-   module
+   fosa
