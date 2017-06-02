@@ -143,7 +143,20 @@ if __name__ == '__main__':
     y_train, y_dev = (y_shuffled[:dev_sample_index],
                       y_shuffled[dev_sample_index:])
 
+    logger.info(" ==> VOCABULARY <== ")
     logger.info("Vocabulary size : %s", len(vocab_processor.vocabulary_))
+    logger.debug("Log the first 10 words of the vocabulary and the last one")
+    # Log the first 10 words and the final one
+    for i in range(0, len(vocab_processor.vocabulary_)):
+        logger.debug("Word in the vocabulary : %s",
+                     vocab_processor.vocabulary_.reverse(i))
+        if (i == 10):
+            break
+    logger.debug("Last word in the vocabulary : %s",
+                 vocab_processor.vocabulary_.reverse(
+                         len(vocab_processor.vocabulary_) - 1))
+    logger.info(" ==> VOCABULARY <== ")
+
     logger.info("Train/Dev : %s/%s", len(y_train), len(y_dev))
 
     logger.debug(" *** END - Loading data *** ")
