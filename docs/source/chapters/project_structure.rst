@@ -1,14 +1,14 @@
 Project structure
 =================
 
-The FOSA project is following this structure (some parts will not be mentionned due to uselessness or simplicity) ::
+The FOSA (feature-oriented sentiment analysis) project is following this structure (some parts will not be mentionned due to uselessness or simplicity) ::
 
     FOSA/
     |--docs/
     |    |--Makefile
     |    `--source/
     |--LICENSE
-    |--module/
+    |--fosa/
     |--README.rst
     |--requirements.txt
     |--setup.py
@@ -28,10 +28,10 @@ License : LICENSE
 
 The license of the project : MIT License.
 
-Source files : module/
+Source files : fosa/
 ----------------------
 
-Inside the *module* folder are stored every source files used for the FOSA project.
+Inside the *fosa* folder are stored every source files used for the FOSA project.
 
 **TODO**
 
