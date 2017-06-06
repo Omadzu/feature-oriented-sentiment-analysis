@@ -52,7 +52,7 @@ if __name__ == '__main__':
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
 
-    logger.info(" ========== Début du programme ========== ")
+    logger.info(" ========== Beginning ========== ")
 
     # Parameters
     # ==================================================
@@ -170,4 +170,4 @@ if __name__ == '__main__':
 
     logger.debug(" *** END - Loading data *** ")
 
-    logger.info(" ========== Fin du programme ========== ")
+    logger.info(" ========== End ========== ")
