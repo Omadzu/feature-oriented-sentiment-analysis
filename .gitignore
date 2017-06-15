@@ -2,6 +2,7 @@
 data/
 results/
 deep-learning-for-sentiment-analysis-of-movie-review/binary-classification-approches/results
+fosa/runs
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
