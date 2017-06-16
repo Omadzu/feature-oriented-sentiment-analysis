@@ -28,36 +28,25 @@ import logging
 import preprocessing as pp
 import CNN
 
+# Constants
+# ==================================================
+
+RUN_DIRECTORY = "runs"
+
 if __name__ == '__main__':
 
-    # Logger
-    # ==================================================
-
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-
-    # File handler which logs even debug messages
-    file_handler = logging.FileHandler('log.log')
-    file_handler.setLevel(logging.DEBUG)
-
-    # Console handler which logs info messages
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-
-    # Create formatter and add it to the handlers
-    formatter = logging.Formatter('%(asctime)s -- %(name)s -- %(levelname)s\n'
-                                  '%(message)s\n')
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-
-    # Add handlers to the logger
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-
-    logger.info(" ========== Beginning ========== ")
+    timestamp = str(int(time.time()))
 
     # Parameters
     # ==================================================
+
+    # Directory name of current run
+    tf.flags.DEFINE_string(
+            "directory_name", "current",
+            "Directory name of the current run where log and other information"
+            " will be stored.\n" +
+            "Information will be stored at: " +
+            "RUN_DIRECTORY/directory_name/timestamp (default name: current)")
 
     # Data loading parameters
     tf.flags.DEFINE_float(
@@ -114,10 +103,52 @@ if __name__ == '__main__':
 
     FLAGS = tf.flags.FLAGS
     FLAGS._parse_flags()
+    CURRENT_RUN_DIRECTORY = os.path.join(os.path.curdir, RUN_DIRECTORY,
+                                         FLAGS.directory_name, timestamp)
+    print(CURRENT_RUN_DIRECTORY)
 
+    # Logger
+    # ==================================================
+
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+
+    # File handler which logs even debug messages
+    file_handler = logging.FileHandler('log.log')
+    file_handler.setLevel(logging.DEBUG)
+
+    # Other file handler to store information for each run
+    if not os.path.exists(CURRENT_RUN_DIRECTORY):
+        os.makedirs(CURRENT_RUN_DIRECTORY)
+    log_directory = CURRENT_RUN_DIRECTORY+"/log.log"
+    run_file_handler = logging.FileHandler(log_directory)
+    run_file_handler.setLevel(logging.DEBUG)
+
+    # Console handler which logs info messages
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+
+    # Create formatter and add it to the handlers
+#    formatter = logging.Formatter('%(asctime)s -- %(name)s -- %(levelname)s\n'
+#                                  '%(message)s\n')
+    formatter = logging.Formatter("%(message)s")
+    file_handler.setFormatter(formatter)
+    run_file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+
+    # Add handlers to the logger
+    logger.addHandler(file_handler)
+    logger.addHandler(run_file_handler)
+    logger.addHandler(console_handler)
+
+    # ---
+    # Information about current run stored
+    # ---
     logger.debug(" *** Parameters *** ")
     for attr, value in sorted(FLAGS.__flags.items()):
         logger.debug("%s=%s", attr.upper(), value)
+    logger.debug("%s=%s", "CURRENT_RUN_DIRECTORY", CURRENT_RUN_DIRECTORY)
+    logger.debug("")
 
     # Data Preparation
     # ==================================================
@@ -153,6 +184,7 @@ if __name__ == '__main__':
     y_train, y_dev = (y_shuffled[:dev_sample_index],
                       y_shuffled[dev_sample_index:])
 
+    logger.info("")
     logger.info(" ==> VOCABULARY <== ")
     logger.info("Vocabulary size : %s", len(vocab_processor.vocabulary_))
 
@@ -168,6 +200,7 @@ if __name__ == '__main__':
                          len(vocab_processor.vocabulary_) - 1))
 
     logger.info("Train/Dev : %s/%s", len(y_train), len(y_dev))
+    logger.info("")
 
     # Training
     # ==================================================
@@ -219,9 +252,8 @@ if __name__ == '__main__':
             # ==================================================
 
             # Output directory for models and summaries
-            timestamp = str(int(time.time()))
-            out_dir = os.path.abspath(os.path.join(os.path.curdir, "runs",
-                                                   timestamp))
+            out_dir = os.path.abspath(os.path.join(
+                    os.path.curdir, CURRENT_RUN_DIRECTORY))
             logger.info("Writing to {}".format(out_dir))
 
             # Summaries for loss and accuracy
@@ -283,8 +315,9 @@ if __name__ == '__main__':
                      cnn.accuracy],
                     feed_dict)
                 time_str = datetime.datetime.now().isoformat()
-                logger.debug("{}: step {}, loss {:g}, acc {:g}".format(
-                        time_str, step, loss, accuracy))
+                logger.info("*** TRAINING LOOP ***\n" +
+                            "{}: step {}, loss {:g}, acc {:g}".format(
+                             time_str, step, loss, accuracy))
                 train_summary_writer.add_summary(summaries, step)
 
             def dev_step(x_batch, y_batch, writer=None):
@@ -302,36 +335,41 @@ if __name__ == '__main__':
                     [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
                     feed_dict)
                 time_str = datetime.datetime.now().isoformat()
-                logger.debug("{}: step {}, loss {:g}, acc {:g}".format(
-                        time_str, step, loss, accuracy))
+                logger.info("*** DEV LOOP ***\n" +
+                            "{}: step {}, loss {:g}, acc {:g}".format(
+                             time_str, step, loss, accuracy))
                 if writer:
                     writer.add_summary(summaries, step)
 
             # Generate batches
             # ==================================================
 
-            batches = pp.batch_iter(
-                list(zip(x_train, y_train)),
-                FLAGS.batch_size,
-                FLAGS.num_epochs)
-            # TODO: Display number of batch
+            data = list(zip(x_train, y_train))
+            batches = pp.batch_iter(data, FLAGS.batch_size, FLAGS.num_epochs)
 
             # Training loop. For each batch...
             # ==================================================
 
             for batch in batches:
-                # TODO: Display pourcentage of completion
                 x_batch, y_batch = zip(*batch)
                 train_step(x_batch, y_batch)
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % FLAGS.evaluate_every == 0:
                     logger.info("Evaluation :")
+                    logger.info("")
                     dev_step(x_dev, y_dev, writer=dev_summary_writer)
-                    # TODO: Suppress following logger
                     logger.info("")
                 if current_step % FLAGS.checkpoint_every == 0:
                     path = saver.save(sess, checkpoint_prefix,
                                       global_step=current_step)
                     logger.info("Saved model checkpoint to {}".format(path))
+                    logger.info("")
 
-    logger.info(" ========== End ========== ")
+                last_step = (pp.batch_number(
+                        data,
+                        FLAGS.batch_size,
+                        FLAGS.num_epochs) * FLAGS.num_epochs)
+                progress_pourcentage = current_step*100/last_step
+                logging.info("Progress : {}%".format(
+                        round(progress_pourcentage, 2)))
+                logger.info("")

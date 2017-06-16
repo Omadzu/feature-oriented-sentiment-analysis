@@ -58,6 +58,14 @@ def load_data_and_labels(positive_data_file, negative_data_file):
     return [x_text, y]
 
 
+def batch_number(data, batch_size, num_epochs):
+    """
+    Compute the number of batch to process during the epoch loop
+    """
+
+    return int((len(data)-1)/batch_size) + 1
+
+
 def batch_iter(data, batch_size, num_epochs, shuffle=True):
     """
     Generates a batch iterator for a dataset.
@@ -65,7 +73,7 @@ def batch_iter(data, batch_size, num_epochs, shuffle=True):
 
     data = np.array(data)
     data_size = len(data)
-    num_batches_per_epoch = int((len(data)-1)/batch_size) + 1
+    num_batches_per_epoch = batch_number(data, batch_size, num_epochs)
     for epoch in range(num_epochs):
         # Shuffle the data at each epoch
         if shuffle:
