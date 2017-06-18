@@ -145,16 +145,6 @@ if __name__ == '__main__':
     logger.addHandler(run_file_handler)
     logger.addHandler(console_handler)
 
-    # ---
-    # Information about current run stored
-    # ---
-    logger.debug(" *** Parameters *** ")
-    for attr, value in sorted(FLAGS.__flags.items()):
-        logger.debug("{}={}".format(attr.upper(), value))
-    logger.debug("{}={}".format("CURRENT_RUN_DIRECTORY",
-                 CURRENT_RUN_DIRECTORY))
-    logger.debug("")
-
     # Use parameters set in config file
     with open("config.yml", 'r') as ymlfile:
         cfg = yaml.load(ymlfile)
@@ -167,6 +157,20 @@ if __name__ == '__main__':
             cfg['word_embeddings'][embedding_name]['dimension']
     else:
         embedding_dimension = FLAGS.embedding_dim
+
+    # ---
+    # Information about current run stored
+    # ---
+    logger.debug(" *** Parameters *** ")
+    for attr, value in sorted(FLAGS.__flags.items()):
+        logger.debug("{}={}".format(attr.upper(), value))
+    logger.debug("{}={}".format("CURRENT_RUN_DIRECTORY",
+                 CURRENT_RUN_DIRECTORY))
+    logger.debug("{}={}".format("WORD_EMBEDDING",
+                 embedding_name))
+    logger.debug("{}={}".format("DATASET (train)",
+                 dataset_name))
+    logger.debug("")
 
     # Data Preparation
     # ==================================================
