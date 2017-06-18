@@ -73,7 +73,7 @@ def get_datasets_20newsgroup(subset='train', categories=None, shuffle=True,
     :return: data and labels of the newsgroup
     """
     datasets = fetch_20newsgroups(subset=subset, categories=categories,
-                                  huffle=shuffle, random_state=random_state)
+                                  shuffle=shuffle, random_state=random_state)
     return datasets
 
 

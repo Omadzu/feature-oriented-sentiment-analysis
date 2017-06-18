@@ -12,7 +12,7 @@ Main code of the algorithm divided into the following parts :
 There is also a word representation part (TODO) using in the feature
 extraction and polarity learning parts.
 
-Based on the following tutorial :
+Based on the following tutorial & code :
     http://www.wildml.com/2015/12/implementing-a-cnn-for-text-classification-in-tensorflow/
     https://github.com/cahya-wirawan/cnn-text-classification-tf
 """
@@ -411,26 +411,34 @@ if __name__ == '__main__':
 
             logger.info("")
             logger.info("*** TRAINING LOOP ***")
+
             for batch in batches:
+
                 x_batch, y_batch = zip(*batch)
                 train_step(x_batch, y_batch)
                 current_step = tf.train.global_step(sess, global_step)
-                if current_step % FLAGS.evaluate_every == 0:
+
+                # Progress
+                last_step = (pp.batch_number(
+                    data,
+                    FLAGS.batch_size,
+                    FLAGS.num_epochs) * FLAGS.num_epochs)
+                progress_pourcentage = round(current_step*100/last_step, 2)
+
+                # Evaluation and checkpoint are made every given steps but
+                # also at the last step of the algorithm
+                if (current_step % FLAGS.evaluate_every == 0 or
+                        progress_pourcentage == float(100)):
                     logger.info("")
                     logger.info("Evaluation :")
                     dev_step(x_dev, y_dev, writer=dev_summary_writer)
                     logger.info("")
-                if current_step % FLAGS.checkpoint_every == 0:
+                if (current_step % FLAGS.checkpoint_every == 0 or
+                        progress_pourcentage == float(100)):
                     path = saver.save(sess, checkpoint_prefix,
                                       global_step=current_step)
                     logger.info("Saved model checkpoint to {}".format(path))
                     logger.info("")
 
-                last_step = (pp.batch_number(
-                        data,
-                        FLAGS.batch_size,
-                        FLAGS.num_epochs) * FLAGS.num_epochs)
-                progress_pourcentage = current_step*100/last_step
-                logging.info("Progress : {}%".format(
-                        round(progress_pourcentage, 2)))
+                logging.info("Progress : {}%".format(progress_pourcentage, 2))
                 logger.info("")
