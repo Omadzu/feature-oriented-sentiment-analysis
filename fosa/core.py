@@ -64,7 +64,7 @@ if __name__ == '__main__':
     # Model Hyperparameters
     tf.flags.DEFINE_boolean(
             "enable_word_embeddings",
-            False, "Enable/disable the word embedding (default: False)")
+            True, "Enable/disable the word embedding (default: False)")
     tf.flags.DEFINE_integer(
             "embedding_dim", 128,
             "Dimensionality of character embedding (default: 128)")
@@ -124,7 +124,7 @@ if __name__ == '__main__':
     # Other file handler to store information for each run
     if not os.path.exists(CURRENT_RUN_DIRECTORY):
         os.makedirs(CURRENT_RUN_DIRECTORY)
-    log_directory = CURRENT_RUN_DIRECTORY+"/log.log"
+    log_directory = os.path.join(CURRENT_RUN_DIRECTORY, "train.log")
     run_file_handler = logging.FileHandler(log_directory)
     run_file_handler.setLevel(logging.DEBUG)
 
