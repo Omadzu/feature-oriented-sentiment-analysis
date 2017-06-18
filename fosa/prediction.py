@@ -8,6 +8,7 @@ from tensorflow.contrib import learn
 import csv
 from sklearn import metrics
 import yaml
+import logging
 
 
 def softmax(x):
@@ -38,13 +39,45 @@ tf.flags.DEFINE_boolean("allow_soft_placement", True,
 tf.flags.DEFINE_boolean("log_device_placement", False,
                         "Log placement of ops on devices")
 
-
 FLAGS = tf.flags.FLAGS
 FLAGS._parse_flags()
-print("\nParameters:")
+
+# Logger
+# ==================================================
+
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
+# File handler which logs even debug messages
+file_handler = logging.FileHandler('log.log')
+file_handler.setLevel(logging.DEBUG)
+
+# Other file handler to store information for each run
+log_directory = os.path.join(FLAGS.checkpoint_dir, "..", "eval.log")
+run_file_handler = logging.FileHandler(log_directory)
+run_file_handler.setLevel(logging.DEBUG)
+
+# Console handler which logs info messages
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+
+# Create formatter and add it to the handlers
+#    formatter = logging.Formatter('%(asctime)s -- %(name)s -- %(levelname)s\n'
+#                                  '%(message)s\n')
+formatter = logging.Formatter("%(message)s")
+file_handler.setFormatter(formatter)
+run_file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+# Add handlers to the logger
+logger.addHandler(file_handler)
+logger.addHandler(run_file_handler)
+logger.addHandler(console_handler)
+
+logger.debug(" *** Parameters *** ")
 for attr, value in sorted(FLAGS.__flags.items()):
-    print("{}={}".format(attr.upper(), value))
-print("")
+    logger.debug("{}={}".format(attr.upper(), value))
+logger.debug("")
 
 datasets = None
 
@@ -63,7 +96,7 @@ if FLAGS.eval_train:
                 random_state=cfg["datasets"][dataset_name]["random_state"])
     x_raw, y_test = pp.load_data_and_labels(datasets)
     y_test = np.argmax(y_test, axis=1)
-    print("Total number of test examples: {}".format(len(y_test)))
+    logger.debug("Total number of test examples: {}".format(len(y_test)))
 else:
     if dataset_name == "mrpolarity":
         datasets = {"target_names": ['positive_examples', 'negative_examples']}
@@ -85,7 +118,9 @@ vocab_path = os.path.join(FLAGS.checkpoint_dir, "..", "vocab")
 vocab_processor = learn.preprocessing.VocabularyProcessor.restore(vocab_path)
 x_test = np.array(list(vocab_processor.transform(x_raw)))
 
-print("\nEvaluating...\n")
+logger.info("")
+logger.info("Evaluation :")
+logger.info("")
 
 # Evaluation
 # ==================================================
@@ -138,11 +173,12 @@ with graph.as_default():
 # Print accuracy if y_test is defined
 if y_test is not None:
     correct_predictions = float(sum(all_predictions == y_test))
-    print("Total number of test examples: {}".format(len(y_test)))
-    print("Accuracy: {:g}".format(correct_predictions/float(len(y_test))))
-    print(metrics.classification_report(
+    logger.debug("Total number of test examples: {}".format(len(y_test)))
+    logger.info(
+            "Accuracy: {:g}".format(correct_predictions/float(len(y_test))))
+    logger.info(metrics.classification_report(
             y_test, all_predictions, target_names=datasets['target_names']))
-    print(metrics.confusion_matrix(y_test, all_predictions))
+    logger.info(metrics.confusion_matrix(y_test, all_predictions))
 
 # Save the evaluation to a csv
 predictions_human_readable = np.column_stack(
@@ -150,7 +186,7 @@ predictions_human_readable = np.column_stack(
          ["{}".format(probability) for probability in all_probabilities]))
 out_path = os.path.join(FLAGS.checkpoint_dir, "..", "prediction.csv")
 
-print("Saving evaluation to {0}".format(out_path))
+logger.info("Saving evaluation to {0}".format(out_path))
 
 with open(out_path, 'w') as f:
     csv.writer(f).writerows(predictions_human_readable)
