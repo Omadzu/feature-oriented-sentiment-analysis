@@ -5,8 +5,8 @@ Main code of the algorithm divided into the following parts :
 
     - preprocessing
     - feature extraction : TODO
-    - polarity learning: TODO
-    - prediction : TODO
+    - polarity learning
+    - prediction
     - Cross-validation : TODO
 
 There is also a word representation part (TODO) using in the feature
