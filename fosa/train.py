@@ -150,6 +150,7 @@ if __name__ == '__main__':
         cfg = yaml.load(ymlfile)
 
     dataset_name = cfg["datasets"]["default"]
+    embedding_name = "NONE"
     if (FLAGS.enable_word_embeddings and
             cfg['word_embeddings']['default'] is not None):
         embedding_name = cfg['word_embeddings']['default']

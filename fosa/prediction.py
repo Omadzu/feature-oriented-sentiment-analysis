@@ -7,8 +7,12 @@ import preprocessing as pp
 from tensorflow.contrib import learn
 import csv
 from sklearn import metrics
+from pandas_ml import ConfusionMatrix
 import yaml
 import logging
+
+# Functions
+# ==================================================
 
 
 def softmax(x):
@@ -94,6 +98,12 @@ if FLAGS.eval_train:
                 categories=cfg["datasets"][dataset_name]["categories"],
                 shuffle=cfg["datasets"][dataset_name]["shuffle"],
                 random_state=cfg["datasets"][dataset_name]["random_state"])
+    elif dataset_name == "localdata":
+        datasets = pp.get_datasets_localdata(
+                container_path=cfg["datasets"][dataset_name]["test_path"],
+                categories=cfg["datasets"][dataset_name]["categories"],
+                shuffle=cfg["datasets"][dataset_name]["shuffle"],
+                random_state=cfg["datasets"][dataset_name]["random_state"])
     x_raw, y_test = pp.load_data_and_labels(datasets)
     y_test = np.argmax(y_test, axis=1)
     logger.debug("Total number of test examples: {}".format(len(y_test)))
@@ -103,7 +113,7 @@ else:
         x_raw = ["a masterpiece four years in the making",
                  "everything is off."]
         y_test = [1, 0]
-    else:
+    elif dataset_name == "20newsgroup":
         datasets = {"target_names": ['alt.atheism',
                                      'comp.graphics',
                                      'sci.med',
@@ -174,11 +184,22 @@ with graph.as_default():
 if y_test is not None:
     correct_predictions = float(sum(all_predictions == y_test))
     logger.debug("Total number of test examples: {}".format(len(y_test)))
+    logger.info("")
     logger.info(
             "Accuracy: {:g}".format(correct_predictions/float(len(y_test))))
+
     logger.info(metrics.classification_report(
             y_test, all_predictions, target_names=datasets['target_names']))
-    logger.info(metrics.confusion_matrix(y_test, all_predictions))
+    #logger.info(metrics.confusion_matrix(y_test, all_predictions))
+
+    confusion_matrix = ConfusionMatrix(y_test, all_predictions)
+    logger.info(confusion_matrix)
+    logger.info("")
+    str_labels = "Labels : "
+    for idx, label in enumerate(datasets['target_names']):
+        str_labels += "{} = {}, ".format(idx, label)
+    logger.info(str_labels)
+    logger.info("")
 
 # Save the evaluation to a csv
 predictions_human_readable = np.column_stack(

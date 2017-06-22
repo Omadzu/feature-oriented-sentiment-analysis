@@ -98,7 +98,7 @@ def get_datasets_mrpolarity(positive_data_file, negative_data_file):
 
 def get_datasets_localdata(container_path=None, categories=None,
                            load_content=True, encoding='utf-8', shuffle=True,
-                           random_state=42):
+                           random_state=42, decode_error='replace'):
     """
     Load text files with categories as subfolder names.
     Individual samples are assumed to be files stored a two levels folder
@@ -110,11 +110,14 @@ def get_datasets_localdata(container_path=None, categories=None,
     :param random_state: seed integer to shuffle the dataset
     :return: data and labels of the dataset
     """
+    print(container_path)
     datasets = load_files(container_path=container_path,
                           categories=categories,
                           load_content=load_content,
                           shuffle=shuffle, encoding=encoding,
-                          random_state=random_state)
+                          random_state=random_state,
+                          decode_error=decode_error)
+
     return datasets
 
 
