@@ -7,19 +7,19 @@ word_embeddings:
     dimension: 300
     binary: True
   glove:
-    path: ../../data/glove.6B.100d.txt
+    path: ../data/GloVe/glove.6B.100d.txt
     dimension: 100
     length: 400000
 
 datasets:
   # Support currently 3 datasets: mrpolarity, 20newsgroup and localdata
-  default: mrpolarity
+  default: localdata
   mrpolarity:
     positive_data_file:
-      path: "../data/rt-polaritydata/rt-polarity.pos"
+      path: "../data/rt-polaritydata/whole_dataset/rt-polarity.pos"
       info: "Data source for the positive data"
     negative_data_file:
-      path: "../data/rt-polaritydata/rt-polarity.neg"
+      path: "../data/rt-polaritydata/whole_dataset/rt-polarity.neg"
       info: "Data source for the negative data"
   20newsgroup:
     # The dataset includes following 20 newsgroups:
@@ -31,8 +31,8 @@ datasets:
     categories:
       - alt.atheism
       - comp.graphics
-      - sci.med
-      - soc.religion.christian
+#      - sci.med
+#      - soc.religion.christian
     shuffle: True
     random_state: 42
   localdata:
@@ -49,7 +49,8 @@ datasets:
     # https://archive.ics.uci.edu/ml/datasets/Sentence+Classification
     # has been used. The dataset includes following 3 domains:
     # arxiv, jdm and plos
-    container_path: ../data/SemEval
+    container_path: ../data/SemEval/document_level_classification/laptop
+    test_path: ../data/SemEval/document_level_classification/test/laptop
     categories:
     shuffle: True
     random_state: 42
