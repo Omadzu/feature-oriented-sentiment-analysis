@@ -1,5 +1,9 @@
 #! /usr/bin/env python3
 
+"""
+Prediction part of the algorithm.
+"""
+
 import tensorflow as tf
 import numpy as np
 import os
