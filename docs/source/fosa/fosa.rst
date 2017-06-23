@@ -12,10 +12,10 @@ fosa\.CNN module
     :undoc-members:
     :show-inheritance:
 
-fosa\.core module
------------------
+fosa\.prediction module
+-----------------------
 
-.. automodule:: fosa.core
+.. automodule:: fosa.prediction
     :members:
     :undoc-members:
     :show-inheritance:
@@ -24,6 +24,14 @@ fosa\.preprocessing module
 --------------------------
 
 .. automodule:: fosa.preprocessing
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+fosa\.train module
+------------------
+
+.. automodule:: fosa.train
     :members:
     :undoc-members:
     :show-inheritance:
