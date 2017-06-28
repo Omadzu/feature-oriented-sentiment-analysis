@@ -4,11 +4,34 @@
 Tools for the preprocessing part of the algorithm.
 """
 
-import numpy as np
 import re
 from sklearn.datasets import fetch_20newsgroups
 from sklearn.datasets import load_files
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import xml.etree.ElementTree as ET
+import codecs
 
+# Constants
+# ============================================
+
+SEMEVAL_FOLDER = '../data/SemEval/Subtask1'
+RESTAURANT_TRAIN = os.path.join(SEMEVAL_FOLDER, 'restaurant', 'train.xml')
+RESTAURANT_TEST = os.path.join(SEMEVAL_FOLDER, 'restaurant', 'test',
+                               'test_gold.xml')
+LAPTOP_TRAIN = os.path.join(SEMEVAL_FOLDER, 'laptop', 'train.xml')
+LAPTOP_TEST = os.path.join(SEMEVAL_FOLDER, 'laptop', 'test', 'test_gold.xml')
+RESTAURANT_ENTITIES = ['FOOD', 'DRINKS', 'SERVICE', 'RESTAURANT', 'AMBIENCE',
+                       'LOCATION']
+LAPTOP_ENTITIES = ['LAPTOP', 'HARDWARE', 'SHIPPING', 'COMPANY', 'SUPPORT',
+                   'SOFTWARE']
+# The following entities will be simplified as HARDWARE entity
+HARDWARE = ['DISPLAY', 'CPU', 'MOTHERBOARD', 'HARD_DISC', 'MEMORY', 'BATTERY',
+            'POWER_SUPPLY', 'KEYBOARD', 'MOUSE', 'FANS_COOLING',
+            'OPTICAL_DRIVES', 'PORTS', 'GRAPHICS', 'MULTIMEDIA_DEVICES']
+POLARITY = ['positive', 'neutral', 'negative']
 
 def clean_str(string):
     """
@@ -210,3 +233,124 @@ def load_embedding_vectors_glove(vocabulary, filename, vector_size):
             embedding_vectors[idx] = vector
     f.close()
     return embedding_vectors
+
+
+def get_dataset_semeval(filepath=RESTAURANT_TRAIN, focus='polarity'):
+    """
+    Parse the XML document of SemEval competition (SemEval 2016, Task 5,
+    Subtask 1). The targetted domains are those containing English reviews :
+    the laptop and the restaurant domains.
+
+    During this step, the XML file is parsed in a Pandas.DataFrame in order to
+    easily manipulate the SemEval data.
+
+    There are different outputs for this function depending on what the user
+    wants to focus on. The ouput can focus on the features or on the polarity
+    depending on the 'focus' parameter.
+
+    :param filepath: Default : training dataset of the restaurant domain. Path
+    of the dataset SemEval.
+    :type filepath: string
+    :param focus: (required) Default : polarity. Possible choices :'feature',
+    'polarity'. Throw an error if not specified. If 'feature' is specified,
+    each sentence will be assigned one or multiple features depending on which
+    feature the sentence is about. If 'polarity' is specified, each sentence
+    will be assigned one or multiple polarities depending on which polarities
+    are expressed in the sentence.
+    :type focus: string
+    :return: A dictionnary representing the SemEval dataset. This dictionnary
+    will be focusing on either the features or the polarities included in the
+    sentences.
+    """
+    # TODO : Multilabel for feature and polarity.
+    # TODO : CURRENT restaurant, adapt to also do auto LAPTOP
+
+    print(filepath)
+    print(focus)
+
+    with codecs.open(filepath, 'r', 'utf8') as xml_file:
+        xml_tree = ET.parse(xml_file)
+        root = xml_tree.getroot()
+
+        list_for_dataframe = []
+        reviews = root.findall('Review')
+        for review in reviews:
+
+            review_id = review.get('rid')
+
+            # Extract opinions and text for each sentence
+            # ATTENTION : Only some entities are taking into account for now.
+            # So split the category until # and select only some entities
+            # ============================================
+
+            sentences = review.findall('./sentences/sentence')
+
+            for sentence in sentences:
+                sentence_id = sentence.get('id')
+                text = sentence.find('text').text
+                opinions = sentence.findall('./Opinions/Opinion')
+
+                for opinion in opinions:
+                    category = opinion.get('category')
+                    category = category.split('#')[0]
+                    polarity = opinion.get('polarity')
+
+                    list_for_dataframe.append({
+                            'review_id': review_id,
+                            'sentence_id': sentence_id,
+                            'text': text,
+                            'feature': category,
+                            'polarity': polarity})
+
+        dataset_df = pd.DataFrame(list_for_dataframe)
+
+        # The dataset is composed of either features or polarity in order to
+        # be feed to the CNN.
+        #
+        # Some other manipulations are done on the data :
+        # - rename some features for simplicity (see HARDWARE constant)
+        # - suppress the sentences which has features not studied in this
+        #   scope
+        # - remove duplicates
+        #
+        # A dictionary representing the dataset is built :
+        # - datasets['data'] = x
+        # - datasets['target'] = y
+        # - datasets['target_name'] = possible categories
+        # ============================================
+
+        datasets = {}
+
+        if focus == 'polarity':
+            dataset_df = dataset_df[['text', 'polarity']]
+            dataset_df = dataset_df.rename(columns={'polarity': 'y'})
+            datasets['target_name'] = POLARITY
+        elif focus == 'feature':
+            dataset_df = dataset_df[['text', 'feature']]
+            dataset_df = dataset_df.rename(columns={'feature': 'y'})
+
+            dataset_df = dataset_df.replace(HARDWARE, 'HARDWARE')
+
+            if filepath == RESTAURANT_TRAIN or filepath == RESTAURANT_TEST:
+                datasets['target_name'] = RESTAURANT_ENTITIES
+                dataset_df = dataset_df[dataset_df['y'].isin(RESTAURANT_ENTITIES)]
+            elif filepath == LAPTOP_TRAIN or filepath == LAPTOP_TEST:
+                datasets['target_name'] = LAPTOP_ENTITIES
+                dataset_df = dataset_df[dataset_df['y'].isin(LAPTOP_ENTITIES)]
+
+            else:
+                raise ValueError("'filepath' parameter must use the " +
+                                 "following constants : 'RESTAURANT_TRAIN', " +
+                                 "'RESTAURANT_TEST', 'LAPTOP_TRAIN', " +
+                                 "'LAPTOP_TEST'")
+
+        else:
+            raise ValueError("'focus' parameter must be 'feature' or" +
+                             "'polarity'")
+
+        dataset_df = dataset_df.drop_duplicates()
+
+        datasets['data'] = dataset_df['text'].values.tolist()
+        datasets['target'] = dataset_df['y'].values.tolist()
+
+        return datasets
