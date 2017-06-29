@@ -41,6 +41,51 @@ RESTAURANT_TEST = os.path.join(SEMEVAL_FOLDER, 'restaurant', 'test',
 LAPTOP_TRAIN = os.path.join(SEMEVAL_FOLDER, 'laptop', 'train.xml')
 LAPTOP_TEST = os.path.join(SEMEVAL_FOLDER, 'laptop', 'test', 'test_gold.xml')
 
+# Functions
+# ==================================================
+
+
+def train_step(x_batch, y_batch):
+    """
+    A single training step
+    """
+
+    feed_dict = {
+      cnn.input_x: x_batch,
+      cnn.input_y: y_batch,
+      cnn.dropout_keep_prob: FLAGS.dropout_keep_prob
+    }
+    _, step, summaries, loss, accuracy = sess.run(
+        [train_op, global_step, train_summary_op, cnn.loss,
+         cnn.accuracy],
+        feed_dict)
+    time_str = datetime.datetime.now().isoformat()
+    logger.info("{}: step {}, loss {:g}, acc {:g}".format(
+                 time_str, step, loss, accuracy))
+    train_summary_writer.add_summary(summaries, step)
+
+
+def dev_step(x_batch, y_batch, writer=None):
+    """
+    Evaluates model on a dev set (example: a validation step,
+    the whole training set...). Disables dropout.
+    """
+
+    feed_dict = {
+      cnn.input_x: x_batch,
+      cnn.input_y: y_batch,
+      cnn.dropout_keep_prob: 1.0
+    }
+    step, summaries, loss, accuracy = sess.run(
+        [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
+        feed_dict)
+    time_str = datetime.datetime.now().isoformat()
+    logger.info("{}: step {}, loss {:g}, acc {:g}".format(
+                 time_str, step, loss, accuracy))
+    if writer:
+        writer.add_summary(summaries, step)
+
+
 if __name__ == '__main__':
 
     timestamp = str(int(time.time()))
@@ -186,25 +231,7 @@ if __name__ == '__main__':
     logger.info(" *** Loading data... *** ")
 
     datasets = None
-    # TODO : Maybe the other datasets could not be used for this version
-    # of the algorithm. See if we keep only semeval dataset.
-    if dataset_name == "mrpolarity":
-        datasets = pp.get_datasets_mrpolarity(
-                cfg["datasets"][dataset_name]["positive_data_file"]["path"],
-                cfg["datasets"][dataset_name]["negative_data_file"]["path"])
-    elif dataset_name == "20newsgroup":
-        datasets = pp.get_datasets_20newsgroup(
-                subset="train",
-                categories=cfg["datasets"][dataset_name]["categories"],
-                shuffle=cfg["datasets"][dataset_name]["shuffle"],
-                random_state=cfg["datasets"][dataset_name]["random_state"])
-    elif dataset_name == "localdata":
-        datasets = pp.get_datasets_localdata(
-                container_path=cfg["datasets"][dataset_name]["container_path"],
-                categories=cfg["datasets"][dataset_name]["categories"],
-                shuffle=cfg["datasets"][dataset_name]["shuffle"],
-                random_state=cfg["datasets"][dataset_name]["random_state"])
-    elif dataset_name == "semeval":
+    if dataset_name == "semeval":
         current_domain = cfg["datasets"][dataset_name]["current_domain"]
         focus = 'feature'
         if current_domain == 'RESTAURANT':
@@ -262,10 +289,22 @@ if __name__ == '__main__':
     logger.info("Train/Dev : %s/%s", len(y_train), len(y_dev))
     logger.info("")
 
-    # Training
+    # ----------
+    # CNNs part :
+    # ----------
+    # 2 CNNs are needed. A first one to know which feature the sentence is
+    # concerned. Another one to know which polarity is given to this sentence.
+    # For now, we simplify the problem by saying there is 1 polarity for 1
+    # entity in a sentence.
     # ==================================================
 
-    logger.info(" *** Define Graph *** ")
+    # ==================================================
+    # CNN_feature
+    # ==================================================
+
+    # Training
+    # ==================================================
+    logger.info(" *** Define Graph for CNN_feature *** ")
     with tf.Graph().as_default():
         session_conf = tf.ConfigProto(
           allow_soft_placement=FLAGS.allow_soft_placement,
@@ -273,10 +312,10 @@ if __name__ == '__main__':
         sess = tf.Session(config=session_conf)
         with sess.as_default():
 
-            # Instantiate CNN & minimising the loss
+            # Instantiate CNN_feature & minimising the loss
             # ==================================================
 
-            logger.info(" *** CNN *** ")
+            logger.info(" *** CNN_feature *** ")
 
             cnn = CNN.TextCNN(
                 sequence_length=x_train.shape[1],
@@ -300,9 +339,9 @@ if __name__ == '__main__':
             for g, v in grads_and_vars:
                 if g is not None:
                     grad_hist_summary = tf.summary.histogram(
-                        "{}/grad/hist".format(v.name), g)
+                        "{}/grad/hist".format(v.name.replace(':', '_')), g)
                     sparsity_summary = tf.summary.scalar(
-                        "{}/grad/sparsity".format(v.name),
+                        "{}/grad/sparsity".format(v.name.replace(':', '_')),
                         tf.nn.zero_fraction(g))
                     grad_summaries.append(grad_hist_summary)
                     grad_summaries.append(sparsity_summary)
@@ -382,48 +421,6 @@ if __name__ == '__main__':
                     logger.info("Glove file has been loaded")
                 sess.run(cnn.W.assign(initW))
 
-            # Functions
-            # ==================================================
-
-            def train_step(x_batch, y_batch):
-                """
-                A single training step
-                """
-
-                feed_dict = {
-                  cnn.input_x: x_batch,
-                  cnn.input_y: y_batch,
-                  cnn.dropout_keep_prob: FLAGS.dropout_keep_prob
-                }
-                _, step, summaries, loss, accuracy = sess.run(
-                    [train_op, global_step, train_summary_op, cnn.loss,
-                     cnn.accuracy],
-                    feed_dict)
-                time_str = datetime.datetime.now().isoformat()
-                logger.info("{}: step {}, loss {:g}, acc {:g}".format(
-                             time_str, step, loss, accuracy))
-                train_summary_writer.add_summary(summaries, step)
-
-            def dev_step(x_batch, y_batch, writer=None):
-                """
-                Evaluates model on a dev set (example: a validation step,
-                the whole training set...). Disables dropout.
-                """
-
-                feed_dict = {
-                  cnn.input_x: x_batch,
-                  cnn.input_y: y_batch,
-                  cnn.dropout_keep_prob: 1.0
-                }
-                step, summaries, loss, accuracy = sess.run(
-                    [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
-                    feed_dict)
-                time_str = datetime.datetime.now().isoformat()
-                logger.info("{}: step {}, loss {:g}, acc {:g}".format(
-                             time_str, step, loss, accuracy))
-                if writer:
-                    writer.add_summary(summaries, step)
-
             # Generate batches
             # ==================================================
 
@@ -466,3 +463,7 @@ if __name__ == '__main__':
 
                 logging.info("Progress : {}%".format(progress_pourcentage, 2))
                 logger.info("")
+
+    # ==================================================
+    # CNN_polarity
+    # ==================================================
