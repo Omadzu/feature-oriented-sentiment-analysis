@@ -45,6 +45,96 @@ LAPTOP_TEST = os.path.join(SEMEVAL_FOLDER, 'laptop', 'test', 'test_gold.xml')
 # ==================================================
 
 
+def build_required_data_for_CNN(config_file, focus):
+    """
+    Compute the different parameters, data to give to a CNN.
+    :param config_file: The configuration file of the project opened with yaml
+    library.
+    :param focus: (required) 'feature' or 'polarity'. This precises how the
+    data will be constructed. If 'feature' is specified, the CNN will learn
+    to understand if a sentence is focusing on one or another feature. If
+    'polarity' is specified, the CNN will learn to understand if a sentence is
+    focusing one or another polarity. This is done by building a dataset
+    focusing on either features or polarities. Raise an error if there is an
+    unexpected value.
+    :type focus: string
+    """
+
+    # Detect errors
+    if focus != 'feature' and focus != 'polarity':
+        raise ValueError("'focus' parameter must be 'feature' or 'polarity'")
+
+    # Load data
+    logger.info(" *** Loading data... *** ")
+
+    datasets = None
+    if dataset_name == "semeval":
+        current_domain =\
+            config_file["datasets"][dataset_name]["current_domain"]
+        if current_domain == 'RESTAURANT':
+            datasets = pp.get_dataset_semeval(RESTAURANT_TRAIN, focus)
+        elif current_domain == 'LAPTOP':
+            datasets = pp.get_dataset_semeval(LAPTOP_TRAIN, focus)
+        else:
+            raise ValueError("The 'current_domain' parameter in the " +
+                             "'config.yml' file must be 'RESTAURANT' " +
+                             "or 'LAPTOP'")
+
+    x_text, y = pp.load_data_and_labels(datasets)
+
+    # Build vocabulary
+    max_document_length = max([len(x.split(" ")) for x in x_text])
+    logger.debug("Max document length : %s", max_document_length)
+    vocab_processor = (learn.preprocessing.VocabularyProcessor(
+            max_document_length))
+    x = np.array(list(vocab_processor.fit_transform(x_text)))
+    logger.debug("Data (shape : %s):\n %s", x.shape, x)
+
+    # Randomly shuffle data
+    np.random.seed(10)
+    shuffle_indices = np.random.permutation(np.arange(len(y)))
+    x_shuffled = x[shuffle_indices]
+    logger.debug("Data shuffled (shape: %s):\n %s", x_shuffled.shape,
+                 x_shuffled)
+    y_shuffled = y[shuffle_indices]
+    logger.debug("Label shuffled (shape: %s):\n %s", y_shuffled.shape,
+                 y_shuffled)
+
+    # Split train/test set
+    # TODO: This is very crude, should use cross-validation
+    dev_sample_index = -1 * int(FLAGS.dev_sample_percentage * float(len(y)))
+    x_train, x_dev = (x_shuffled[:dev_sample_index],
+                      x_shuffled[dev_sample_index:])
+    y_train, y_dev = (y_shuffled[:dev_sample_index],
+                      y_shuffled[dev_sample_index:])
+
+    logger.info("")
+    logger.info(" ==> VOCABULARY <== ")
+    logger.info("Vocabulary size : %s", len(vocab_processor.vocabulary_))
+
+    # Log the first 10 words and the final one
+    logger.debug("Log the first 10 words of the vocabulary and the last one")
+    for i in range(0, len(vocab_processor.vocabulary_)):
+        logger.debug("Word in the vocabulary : %s",
+                     vocab_processor.vocabulary_.reverse(i))
+        if (i == 10):
+            break
+    logger.debug("Last word in the vocabulary : %s",
+                 vocab_processor.vocabulary_.reverse(
+                         len(vocab_processor.vocabulary_) - 1))
+
+    logger.info("Train/Dev : %s/%s", len(y_train), len(y_dev))
+    logger.info("")
+
+    return {'sequence_length': x_train.shape[1],
+            'num_classes': y_train.shape[1],
+            'vocab_processor': vocab_processor,
+            'x_train': x_train,
+            'x_dev': x_dev,
+            'y_train': y_train,
+            'y_dev': y_dev}
+
+
 def train_step(x_batch, y_batch):
     """
     A single training step
@@ -227,67 +317,8 @@ if __name__ == '__main__':
     # Data Preparation
     # ==================================================
 
-    # Load data
-    logger.info(" *** Loading data... *** ")
-
-    datasets = None
-    if dataset_name == "semeval":
-        current_domain = cfg["datasets"][dataset_name]["current_domain"]
-        focus = 'feature'
-        if current_domain == 'RESTAURANT':
-            datasets = pp.get_dataset_semeval(RESTAURANT_TRAIN, focus)
-        elif current_domain == 'LAPTOP':
-            datasets = pp.get_dataset_semeval(LAPTOP_TRAIN, focus)
-        else:
-            raise ValueError("The 'current_domain' parameter in the " +
-                             "'config.yml' file must be 'RESTAURANT' " +
-                             "or 'LAPTOP'")
-
-    x_text, y = pp.load_data_and_labels(datasets)
-
-    # Build vocabulary
-    max_document_length = max([len(x.split(" ")) for x in x_text])
-    logger.debug("Max document length : %s", max_document_length)
-    vocab_processor = (learn.preprocessing.VocabularyProcessor(
-            max_document_length))
-    x = np.array(list(vocab_processor.fit_transform(x_text)))
-    logger.debug("Data (shape : %s):\n %s", x.shape, x)
-
-    # Randomly shuffle data
-    np.random.seed(10)
-    shuffle_indices = np.random.permutation(np.arange(len(y)))
-    x_shuffled = x[shuffle_indices]
-    logger.debug("Data shuffled (shape: %s):\n %s", x_shuffled.shape,
-                 x_shuffled)
-    y_shuffled = y[shuffle_indices]
-    logger.debug("Label shuffled (shape: %s):\n %s", y_shuffled.shape,
-                 y_shuffled)
-
-    # Split train/test set
-    # TODO: This is very crude, should use cross-validation
-    dev_sample_index = -1 * int(FLAGS.dev_sample_percentage * float(len(y)))
-    x_train, x_dev = (x_shuffled[:dev_sample_index],
-                      x_shuffled[dev_sample_index:])
-    y_train, y_dev = (y_shuffled[:dev_sample_index],
-                      y_shuffled[dev_sample_index:])
-
-    logger.info("")
-    logger.info(" ==> VOCABULARY <== ")
-    logger.info("Vocabulary size : %s", len(vocab_processor.vocabulary_))
-
-    # Log the first 10 words and the final one
-    logger.debug("Log the first 10 words of the vocabulary and the last one")
-    for i in range(0, len(vocab_processor.vocabulary_)):
-        logger.debug("Word in the vocabulary : %s",
-                     vocab_processor.vocabulary_.reverse(i))
-        if (i == 10):
-            break
-    logger.debug("Last word in the vocabulary : %s",
-                 vocab_processor.vocabulary_.reverse(
-                         len(vocab_processor.vocabulary_) - 1))
-
-    logger.info("Train/Dev : %s/%s", len(y_train), len(y_dev))
-    logger.info("")
+    feature_data = build_required_data_for_CNN(cfg, 'feature')
+    polarity_data = build_required_data_for_CNN(cfg, 'polarity')
 
     # ----------
     # CNNs part :
@@ -318,9 +349,9 @@ if __name__ == '__main__':
             logger.info(" *** CNN_feature *** ")
 
             cnn = CNN.TextCNN(
-                sequence_length=x_train.shape[1],
-                num_classes=y_train.shape[1],
-                vocab_size=len(vocab_processor.vocabulary_),
+                sequence_length=feature_data['sequence_length'],
+                num_classes=feature_data['num_classes'],
+                vocab_size=len(feature_data['vocab_processor'].vocabulary_),
                 embedding_size=embedding_dimension,
                 filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
                 num_filters=FLAGS.num_filters,
@@ -352,7 +383,7 @@ if __name__ == '__main__':
 
             # Output directory for models and summaries
             out_dir = os.path.abspath(os.path.join(
-                    os.path.curdir, CURRENT_RUN_DIRECTORY))
+                    os.path.curdir, CURRENT_RUN_DIRECTORY, 'CNN_feature'))
             logger.info("")
             logger.info("Writing to {}".format(out_dir))
 
@@ -390,7 +421,8 @@ if __name__ == '__main__':
             # Write vocabulary
             # ==================================================
 
-            vocab_processor.save(os.path.join(out_dir, "vocab"))
+            feature_data['vocab_processor'].save(os.path.join(
+                    out_dir, "vocab"))
 
             # Initializing the variables
             # ==================================================
@@ -399,7 +431,7 @@ if __name__ == '__main__':
 
             if (FLAGS.enable_word_embeddings and
                     cfg['word_embeddings']['default'] is not None):
-                vocabulary = vocab_processor.vocabulary_
+                vocabulary = feature_data['vocab_processor'].vocabulary_
                 initW = None
                 if embedding_name == 'word2vec':
                     # Load embedding vectors from the word2vec
@@ -424,7 +456,7 @@ if __name__ == '__main__':
             # Generate batches
             # ==================================================
 
-            data = list(zip(x_train, y_train))
+            data = list(zip(feature_data['x_train'], feature_data['y_train']))
             batches = pp.batch_iter(data, FLAGS.batch_size, FLAGS.num_epochs)
 
             # Training loop. For each batch...
@@ -452,7 +484,8 @@ if __name__ == '__main__':
                         progress_pourcentage == float(100)):
                     logger.info("")
                     logger.info("Evaluation :")
-                    dev_step(x_dev, y_dev, writer=dev_summary_writer)
+                    dev_step(feature_data['x_dev'], feature_data['y_dev'],
+                             writer=dev_summary_writer)
                     logger.info("")
                 if (current_step % FLAGS.checkpoint_every == 0 or
                         progress_pourcentage == float(100)):
