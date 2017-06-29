@@ -33,6 +33,7 @@ HARDWARE = ['DISPLAY', 'CPU', 'MOTHERBOARD', 'HARD_DISC', 'MEMORY', 'BATTERY',
             'OPTICAL_DRIVES', 'PORTS', 'GRAPHICS', 'MULTIMEDIA_DEVICES']
 POLARITY = ['positive', 'neutral', 'negative']
 
+
 def clean_str(string):
     """
     Tokenization/string cleaning for all datasets except for SST.
@@ -133,7 +134,6 @@ def get_datasets_localdata(container_path=None, categories=None,
     :param random_state: seed integer to shuffle the dataset
     :return: data and labels of the dataset
     """
-    print(container_path)
     datasets = load_files(container_path=container_path,
                           categories=categories,
                           load_content=load_content,
@@ -265,9 +265,6 @@ def get_dataset_semeval(filepath=RESTAURANT_TRAIN, focus='polarity'):
     # TODO : Multilabel for feature and polarity.
     # TODO : CURRENT restaurant, adapt to also do auto LAPTOP
 
-    print(filepath)
-    print(focus)
-
     with codecs.open(filepath, 'r', 'utf8') as xml_file:
         xml_tree = ET.parse(xml_file)
         root = xml_tree.getroot()
@@ -316,7 +313,9 @@ def get_dataset_semeval(filepath=RESTAURANT_TRAIN, focus='polarity'):
         # A dictionary representing the dataset is built :
         # - datasets['data'] = x
         # - datasets['target'] = y
-        # - datasets['target_name'] = possible categories
+        # - datasets['target_names'] = possible categories
+        # The values stored in datasets['target'] are integers in order to
+        # be read further in the algorithm.
         # ============================================
 
         datasets = {}
@@ -324,7 +323,11 @@ def get_dataset_semeval(filepath=RESTAURANT_TRAIN, focus='polarity'):
         if focus == 'polarity':
             dataset_df = dataset_df[['text', 'polarity']]
             dataset_df = dataset_df.rename(columns={'polarity': 'y'})
-            datasets['target_name'] = POLARITY
+
+            range_dict = list(range(len(POLARITY)))
+            polarity_dict = dict(zip(POLARITY, range_dict))
+            dataset_df = dataset_df.replace({'y': polarity_dict})
+            datasets['target_names'] = POLARITY
         elif focus == 'feature':
             dataset_df = dataset_df[['text', 'feature']]
             dataset_df = dataset_df.rename(columns={'feature': 'y'})
@@ -332,12 +335,21 @@ def get_dataset_semeval(filepath=RESTAURANT_TRAIN, focus='polarity'):
             dataset_df = dataset_df.replace(HARDWARE, 'HARDWARE')
 
             if filepath == RESTAURANT_TRAIN or filepath == RESTAURANT_TEST:
-                datasets['target_name'] = RESTAURANT_ENTITIES
+                datasets['target_names'] = RESTAURANT_ENTITIES
                 dataset_df = dataset_df[dataset_df['y'].isin(RESTAURANT_ENTITIES)]
+
+                range_dict = list(range(len(RESTAURANT_ENTITIES)))
+                restaurant_entities_dict = dict(zip(RESTAURANT_ENTITIES,
+                                                    range_dict))
+                dataset_df = dataset_df.replace({'y':
+                                                restaurant_entities_dict})
             elif filepath == LAPTOP_TRAIN or filepath == LAPTOP_TEST:
-                datasets['target_name'] = LAPTOP_ENTITIES
+                datasets['target_names'] = LAPTOP_ENTITIES
                 dataset_df = dataset_df[dataset_df['y'].isin(LAPTOP_ENTITIES)]
 
+                range_dict = list(range(len(LAPTOP_ENTITIES)))
+                laptop_entities_dict = dict(zip(LAPTOP_ENTITIES, range_dict))
+                dataset_df = dataset_df.replace({'y': laptop_entities_dict})
             else:
                 raise ValueError("'filepath' parameter must use the " +
                                  "following constants : 'RESTAURANT_TRAIN', " +

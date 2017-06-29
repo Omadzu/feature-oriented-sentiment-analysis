@@ -186,8 +186,6 @@ if __name__ == '__main__':
     logger.info(" *** Loading data... *** ")
 
     datasets = None
-    # TODO : Maybe the other datasets could not be used for this version
-    # of the algorithm. See if we keep only semeval dataset.
     if dataset_name == "mrpolarity":
         datasets = pp.get_datasets_mrpolarity(
                 cfg["datasets"][dataset_name]["positive_data_file"]["path"],
@@ -204,17 +202,6 @@ if __name__ == '__main__':
                 categories=cfg["datasets"][dataset_name]["categories"],
                 shuffle=cfg["datasets"][dataset_name]["shuffle"],
                 random_state=cfg["datasets"][dataset_name]["random_state"])
-    elif dataset_name == "semeval":
-        current_domain = cfg["datasets"][dataset_name]["current_domain"]
-        focus = 'feature'
-        if current_domain == 'RESTAURANT':
-            datasets = pp.get_dataset_semeval(RESTAURANT_TRAIN, focus)
-        elif current_domain == 'LAPTOP':
-            datasets = pp.get_dataset_semeval(LAPTOP_TRAIN, focus)
-        else:
-            raise ValueError("The 'current_domain' parameter in the " +
-                             "'config.yml' file must be 'RESTAURANT' " +
-                             "or 'LAPTOP'")
 
     x_text, y = pp.load_data_and_labels(datasets)
 

@@ -15,6 +15,16 @@ from pandas_ml import ConfusionMatrix
 import yaml
 import logging
 
+# Constants
+# ============================================
+
+SEMEVAL_FOLDER = '../data/SemEval/Subtask1'
+RESTAURANT_TRAIN = os.path.join(SEMEVAL_FOLDER, 'restaurant', 'train.xml')
+RESTAURANT_TEST = os.path.join(SEMEVAL_FOLDER, 'restaurant', 'test',
+                               'test_gold.xml')
+LAPTOP_TRAIN = os.path.join(SEMEVAL_FOLDER, 'laptop', 'train.xml')
+LAPTOP_TEST = os.path.join(SEMEVAL_FOLDER, 'laptop', 'test', 'test_gold.xml')
+
 # Functions
 # ==================================================
 
@@ -108,6 +118,18 @@ if __name__ == '__main__':
                 categories=cfg["datasets"][dataset_name]["categories"],
                 shuffle=cfg["datasets"][dataset_name]["shuffle"],
                 random_state=cfg["datasets"][dataset_name]["random_state"])
+        elif dataset_name == "semeval":
+            current_domain = cfg["datasets"][dataset_name]["current_domain"]
+            focus = 'feature'
+            if current_domain == 'RESTAURANT':
+                datasets = pp.get_dataset_semeval(RESTAURANT_TEST, focus)
+            elif current_domain == 'LAPTOP':
+                datasets = pp.get_dataset_semeval(LAPTOP_TEST, focus)
+            else:
+                raise ValueError("The 'current_domain' parameter in the " +
+                                 "'config.yml' file must be 'RESTAURANT' " +
+                                 "or 'LAPTOP'")
+
         x_raw, y_test = pp.load_data_and_labels(datasets)
         y_test = np.argmax(y_test, axis=1)
         logger.debug("Total number of test examples: {}".format(len(y_test)))
