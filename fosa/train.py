@@ -135,45 +135,228 @@ def build_required_data_for_CNN(config_file, focus):
             'y_dev': y_dev}
 
 
-def train_step(x_batch, y_batch):
+def CNN_process(config_file, focus):
     """
-    A single training step
-    """
-
-    feed_dict = {
-      cnn.input_x: x_batch,
-      cnn.input_y: y_batch,
-      cnn.dropout_keep_prob: FLAGS.dropout_keep_prob
-    }
-    _, step, summaries, loss, accuracy = sess.run(
-        [train_op, global_step, train_summary_op, cnn.loss,
-         cnn.accuracy],
-        feed_dict)
-    time_str = datetime.datetime.now().isoformat()
-    logger.info("{}: step {}, loss {:g}, acc {:g}".format(
-                 time_str, step, loss, accuracy))
-    train_summary_writer.add_summary(summaries, step)
-
-
-def dev_step(x_batch, y_batch, writer=None):
-    """
-    Evaluates model on a dev set (example: a validation step,
-    the whole training set...). Disables dropout.
+    This function run the whole process to init a CNN.
+    :param config_file: The configuration file of the project opened with yaml
+    library.
+    :param focus: (required) 'feature' or 'polarity'. This precises how the
+    data will be constructed. If 'feature' is specified, the CNN will learn
+    to understand if a sentence is focusing on one or another feature. If
+    'polarity' is specified, the CNN will learn to understand if a sentence is
+    focusing one or another polarity. This is done by building a dataset
+    focusing on either features or polarities. Raise an error if there is an
+    unexpected value.
+    :type focus: string
     """
 
-    feed_dict = {
-      cnn.input_x: x_batch,
-      cnn.input_y: y_batch,
-      cnn.dropout_keep_prob: 1.0
-    }
-    step, summaries, loss, accuracy = sess.run(
-        [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
-        feed_dict)
-    time_str = datetime.datetime.now().isoformat()
-    logger.info("{}: step {}, loss {:g}, acc {:g}".format(
-                 time_str, step, loss, accuracy))
-    if writer:
-        writer.add_summary(summaries, step)
+    # Data Preparation
+    # ==================================================
+    required_data = build_required_data_for_CNN(config_file, focus)
+
+    # Training
+    # ==================================================
+    logger.info(" *** Define Graph for CNN_" + focus + " *** ")
+    with tf.Graph().as_default():
+        session_conf = tf.ConfigProto(
+          allow_soft_placement=FLAGS.allow_soft_placement,
+          log_device_placement=FLAGS.log_device_placement)
+        sess = tf.Session(config=session_conf)
+        with sess.as_default():
+
+            # Instantiate CNN_feature & minimising the loss
+            # ==================================================
+
+            logger.info(" *** CNN_" + focus + " *** ")
+
+            cnn = CNN.TextCNN(
+                sequence_length=required_data['sequence_length'],
+                num_classes=required_data['num_classes'],
+                vocab_size=len(required_data['vocab_processor'].vocabulary_),
+                embedding_size=embedding_dimension,
+                filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
+                num_filters=FLAGS.num_filters,
+                l2_reg_lambda=FLAGS.l2_reg_lambda)
+
+            # Define Training procedure
+            global_step = tf.Variable(0, name="global_step", trainable=False)
+            # TODO : Other optimizer
+            optimizer = tf.train.AdamOptimizer(1e-3)
+            grads_and_vars = optimizer.compute_gradients(cnn.loss)
+            train_op = optimizer.apply_gradients(grads_and_vars,
+                                                 global_step=global_step)
+
+            # Keep track of gradient values and sparsity (optional)
+            grad_summaries = []
+            for g, v in grads_and_vars:
+                if g is not None:
+                    grad_hist_summary = tf.summary.histogram(
+                        "{}/grad/hist".format(v.name.replace(':', '_')), g)
+                    sparsity_summary = tf.summary.scalar(
+                        "{}/grad/sparsity".format(v.name.replace(':', '_')),
+                        tf.nn.zero_fraction(g))
+                    grad_summaries.append(grad_hist_summary)
+                    grad_summaries.append(sparsity_summary)
+            grad_summaries_merged = tf.summary.merge(grad_summaries)
+
+            # Summaries
+            # ==================================================
+
+            # Output directory for models and summaries
+            out_dir = os.path.abspath(os.path.join(
+                    os.path.curdir, CURRENT_RUN_DIRECTORY,
+                    'CNN_' + focus))
+            logger.info("")
+            logger.info("Writing to {}".format(out_dir))
+
+            # Summaries for loss and accuracy
+            loss_summary = tf.summary.scalar("loss", cnn.loss)
+            acc_summary = tf.summary.scalar("accuracy", cnn.accuracy)
+
+            # Train Summaries
+            train_summary_op = tf.summary.merge([loss_summary, acc_summary,
+                                                 grad_summaries_merged])
+            train_summary_dir = os.path.join(out_dir, "summaries", "train")
+            train_summary_writer = tf.summary.FileWriter(train_summary_dir,
+                                                         sess.graph)
+
+            # Dev summaries
+            dev_summary_op = tf.summary.merge([loss_summary, acc_summary])
+            dev_summary_dir = os.path.join(out_dir, "summaries", "dev")
+            dev_summary_writer = tf.summary.FileWriter(dev_summary_dir,
+                                                       sess.graph)
+
+            # Checkpointing
+            # ==================================================
+
+            checkpoint_dir = os.path.abspath(os.path.join(out_dir,
+                                                          "checkpoints"))
+            checkpoint_prefix = os.path.join(checkpoint_dir, "model")
+
+            # Tensorflow assumes this directory already exists so we
+            # need to create it
+            if not os.path.exists(checkpoint_dir):
+                os.makedirs(checkpoint_dir)
+            saver = tf.train.Saver(tf.global_variables(),
+                                   max_to_keep=FLAGS.num_checkpoints)
+
+            # Write vocabulary
+            # ==================================================
+
+            required_data['vocab_processor'].save(os.path.join(
+                    out_dir, "vocab"))
+
+            # Initializing the variables
+            # ==================================================
+
+            sess.run(tf.global_variables_initializer())
+
+            if (FLAGS.enable_word_embeddings and
+                    cfg['word_embeddings']['default'] is not None):
+                vocabulary = required_data['vocab_processor'].vocabulary_
+                initW = None
+                if embedding_name == 'word2vec':
+                    # Load embedding vectors from the word2vec
+                    logger.info("Load word2vec file {}".format(
+                            cfg['word_embeddings']['word2vec']['path']))
+                    initW = pp.load_embedding_vectors_word2vec(
+                            vocabulary,
+                            cfg['word_embeddings']['word2vec']['path'],
+                            cfg['word_embeddings']['word2vec']['binary'])
+                    logger.info("Word2vec file has been loaded")
+                elif embedding_name == 'glove':
+                    # Load embedding vectors from the glove
+                    logger.info("Load glove file {}".format(
+                            cfg['word_embeddings']['glove']['path']))
+                    initW = pp.load_embedding_vectors_glove(
+                            vocabulary,
+                            cfg['word_embeddings']['glove']['path'],
+                            embedding_dimension)
+                    logger.info("Glove file has been loaded")
+                sess.run(cnn.W.assign(initW))
+
+            def train_step(x_batch, y_batch):
+                """
+                A single training step
+                """
+
+                feed_dict = {
+                  cnn.input_x: x_batch,
+                  cnn.input_y: y_batch,
+                  cnn.dropout_keep_prob: FLAGS.dropout_keep_prob
+                }
+                _, step, summaries, loss, accuracy = sess.run(
+                    [train_op, global_step, train_summary_op, cnn.loss,
+                     cnn.accuracy],
+                    feed_dict)
+                time_str = datetime.datetime.now().isoformat()
+                logger.info("{}: step {}, loss {:g}, acc {:g}".format(
+                             time_str, step, loss, accuracy))
+                train_summary_writer.add_summary(summaries, step)
+
+            def dev_step(x_batch, y_batch, writer=None):
+                """
+                Evaluates model on a dev set (example: a validation step,
+                the whole training set...). Disables dropout.
+                """
+
+                feed_dict = {
+                  cnn.input_x: x_batch,
+                  cnn.input_y: y_batch,
+                  cnn.dropout_keep_prob: 1.0
+                }
+                step, summaries, loss, accuracy = sess.run(
+                    [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
+                    feed_dict)
+                time_str = datetime.datetime.now().isoformat()
+                logger.info("{}: step {}, loss {:g}, acc {:g}".format(
+                             time_str, step, loss, accuracy))
+                if writer:
+                    writer.add_summary(summaries, step)
+
+            # Generate batches
+            # ==================================================
+
+            data = list(zip(required_data['x_train'], required_data['y_train']))
+            batches = pp.batch_iter(data, FLAGS.batch_size, FLAGS.num_epochs)
+
+            # Training loop. For each batch...
+            # ==================================================
+
+            logger.info("")
+            logger.info("*** TRAINING LOOP ***")
+
+            for batch in batches:
+
+                x_batch, y_batch = zip(*batch)
+                train_step(x_batch, y_batch)
+                current_step = tf.train.global_step(sess, global_step)
+
+                # Progress
+                last_step = (pp.batch_number(
+                    data,
+                    FLAGS.batch_size,
+                    FLAGS.num_epochs) * FLAGS.num_epochs)
+                progress_pourcentage = round(current_step*100/last_step, 2)
+
+                # Evaluation and checkpoint are made every given steps but
+                # also at the last step of the algorithm
+                if (current_step % FLAGS.evaluate_every == 0 or
+                        progress_pourcentage == float(100)):
+                    logger.info("")
+                    logger.info("Evaluation :")
+                    dev_step(required_data['x_dev'], required_data['y_dev'],
+                             writer=dev_summary_writer)
+                    logger.info("")
+                if (current_step % FLAGS.checkpoint_every == 0 or
+                        progress_pourcentage == float(100)):
+                    path = saver.save(sess, checkpoint_prefix,
+                                      global_step=current_step)
+                    logger.info("Saved model checkpoint to {}".format(path))
+                    logger.info("")
+
+                logging.info("Progress : {}%".format(progress_pourcentage, 2))
+                logger.info("")
 
 
 if __name__ == '__main__':
@@ -314,12 +497,6 @@ if __name__ == '__main__':
                  dataset_name))
     logger.debug("")
 
-    # Data Preparation
-    # ==================================================
-
-    feature_data = build_required_data_for_CNN(cfg, 'feature')
-    polarity_data = build_required_data_for_CNN(cfg, 'polarity')
-
     # ----------
     # CNNs part :
     # ----------
@@ -333,170 +510,10 @@ if __name__ == '__main__':
     # CNN_feature
     # ==================================================
 
-    # Training
-    # ==================================================
-    logger.info(" *** Define Graph for CNN_feature *** ")
-    with tf.Graph().as_default():
-        session_conf = tf.ConfigProto(
-          allow_soft_placement=FLAGS.allow_soft_placement,
-          log_device_placement=FLAGS.log_device_placement)
-        sess = tf.Session(config=session_conf)
-        with sess.as_default():
-
-            # Instantiate CNN_feature & minimising the loss
-            # ==================================================
-
-            logger.info(" *** CNN_feature *** ")
-
-            cnn = CNN.TextCNN(
-                sequence_length=feature_data['sequence_length'],
-                num_classes=feature_data['num_classes'],
-                vocab_size=len(feature_data['vocab_processor'].vocabulary_),
-                embedding_size=embedding_dimension,
-                filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
-                num_filters=FLAGS.num_filters,
-                l2_reg_lambda=FLAGS.l2_reg_lambda)
-
-            # Define Training procedure
-            global_step = tf.Variable(0, name="global_step", trainable=False)
-            # TODO : Other optimizer
-            optimizer = tf.train.AdamOptimizer(1e-3)
-            grads_and_vars = optimizer.compute_gradients(cnn.loss)
-            train_op = optimizer.apply_gradients(grads_and_vars,
-                                                 global_step=global_step)
-
-            # Keep track of gradient values and sparsity (optional)
-            grad_summaries = []
-            for g, v in grads_and_vars:
-                if g is not None:
-                    grad_hist_summary = tf.summary.histogram(
-                        "{}/grad/hist".format(v.name.replace(':', '_')), g)
-                    sparsity_summary = tf.summary.scalar(
-                        "{}/grad/sparsity".format(v.name.replace(':', '_')),
-                        tf.nn.zero_fraction(g))
-                    grad_summaries.append(grad_hist_summary)
-                    grad_summaries.append(sparsity_summary)
-            grad_summaries_merged = tf.summary.merge(grad_summaries)
-
-            # Summaries
-            # ==================================================
-
-            # Output directory for models and summaries
-            out_dir = os.path.abspath(os.path.join(
-                    os.path.curdir, CURRENT_RUN_DIRECTORY, 'CNN_feature'))
-            logger.info("")
-            logger.info("Writing to {}".format(out_dir))
-
-            # Summaries for loss and accuracy
-            loss_summary = tf.summary.scalar("loss", cnn.loss)
-            acc_summary = tf.summary.scalar("accuracy", cnn.accuracy)
-
-            # Train Summaries
-            train_summary_op = tf.summary.merge([loss_summary, acc_summary,
-                                                 grad_summaries_merged])
-            train_summary_dir = os.path.join(out_dir, "summaries", "train")
-            train_summary_writer = tf.summary.FileWriter(train_summary_dir,
-                                                         sess.graph)
-
-            # Dev summaries
-            dev_summary_op = tf.summary.merge([loss_summary, acc_summary])
-            dev_summary_dir = os.path.join(out_dir, "summaries", "dev")
-            dev_summary_writer = tf.summary.FileWriter(dev_summary_dir,
-                                                       sess.graph)
-
-            # Checkpointing
-            # ==================================================
-
-            checkpoint_dir = os.path.abspath(os.path.join(out_dir,
-                                                          "checkpoints"))
-            checkpoint_prefix = os.path.join(checkpoint_dir, "model")
-
-            # Tensorflow assumes this directory already exists so we
-            # need to create it
-            if not os.path.exists(checkpoint_dir):
-                os.makedirs(checkpoint_dir)
-            saver = tf.train.Saver(tf.global_variables(),
-                                   max_to_keep=FLAGS.num_checkpoints)
-
-            # Write vocabulary
-            # ==================================================
-
-            feature_data['vocab_processor'].save(os.path.join(
-                    out_dir, "vocab"))
-
-            # Initializing the variables
-            # ==================================================
-
-            sess.run(tf.global_variables_initializer())
-
-            if (FLAGS.enable_word_embeddings and
-                    cfg['word_embeddings']['default'] is not None):
-                vocabulary = feature_data['vocab_processor'].vocabulary_
-                initW = None
-                if embedding_name == 'word2vec':
-                    # Load embedding vectors from the word2vec
-                    logger.info("Load word2vec file {}".format(
-                            cfg['word_embeddings']['word2vec']['path']))
-                    initW = pp.load_embedding_vectors_word2vec(
-                            vocabulary,
-                            cfg['word_embeddings']['word2vec']['path'],
-                            cfg['word_embeddings']['word2vec']['binary'])
-                    logger.info("Word2vec file has been loaded")
-                elif embedding_name == 'glove':
-                    # Load embedding vectors from the glove
-                    logger.info("Load glove file {}".format(
-                            cfg['word_embeddings']['glove']['path']))
-                    initW = pp.load_embedding_vectors_glove(
-                            vocabulary,
-                            cfg['word_embeddings']['glove']['path'],
-                            embedding_dimension)
-                    logger.info("Glove file has been loaded")
-                sess.run(cnn.W.assign(initW))
-
-            # Generate batches
-            # ==================================================
-
-            data = list(zip(feature_data['x_train'], feature_data['y_train']))
-            batches = pp.batch_iter(data, FLAGS.batch_size, FLAGS.num_epochs)
-
-            # Training loop. For each batch...
-            # ==================================================
-
-            logger.info("")
-            logger.info("*** TRAINING LOOP ***")
-
-            for batch in batches:
-
-                x_batch, y_batch = zip(*batch)
-                train_step(x_batch, y_batch)
-                current_step = tf.train.global_step(sess, global_step)
-
-                # Progress
-                last_step = (pp.batch_number(
-                    data,
-                    FLAGS.batch_size,
-                    FLAGS.num_epochs) * FLAGS.num_epochs)
-                progress_pourcentage = round(current_step*100/last_step, 2)
-
-                # Evaluation and checkpoint are made every given steps but
-                # also at the last step of the algorithm
-                if (current_step % FLAGS.evaluate_every == 0 or
-                        progress_pourcentage == float(100)):
-                    logger.info("")
-                    logger.info("Evaluation :")
-                    dev_step(feature_data['x_dev'], feature_data['y_dev'],
-                             writer=dev_summary_writer)
-                    logger.info("")
-                if (current_step % FLAGS.checkpoint_every == 0 or
-                        progress_pourcentage == float(100)):
-                    path = saver.save(sess, checkpoint_prefix,
-                                      global_step=current_step)
-                    logger.info("Saved model checkpoint to {}".format(path))
-                    logger.info("")
-
-                logging.info("Progress : {}%".format(progress_pourcentage, 2))
-                logger.info("")
+    CNN_process(cfg, 'feature')
 
     # ==================================================
     # CNN_polarity
     # ==================================================
+
+    CNN_process(cfg, 'polarity')

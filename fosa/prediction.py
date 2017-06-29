@@ -60,6 +60,9 @@ if __name__ == '__main__':
     tf.flags.DEFINE_boolean("log_device_placement", False,
                             "Log placement of ops on devices")
 
+    # Precise if predictions is on features or polarity
+    tf.flags.DEFINE_string("focus", "", "'feature' or 'polarity'")
+
     FLAGS = tf.flags.FLAGS
     FLAGS._parse_flags()
 
@@ -120,7 +123,7 @@ if __name__ == '__main__':
                 random_state=cfg["datasets"][dataset_name]["random_state"])
         elif dataset_name == "semeval":
             current_domain = cfg["datasets"][dataset_name]["current_domain"]
-            focus = 'feature'
+            focus = FLAGS.focus
             if current_domain == 'RESTAURANT':
                 datasets = pp.get_dataset_semeval(RESTAURANT_TEST, focus)
             elif current_domain == 'LAPTOP':
