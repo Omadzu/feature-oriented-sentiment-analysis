@@ -12,8 +12,9 @@ word_embeddings:
     length: 400000
 
 datasets:
-  # Support currently 3 datasets: mrpolarity, 20newsgroup and localdata
-  default: localdata
+  # Support currently 4 datasets: mrpolarity, 20newsgroup, localdata and
+  # semeval
+  default: semeval
   mrpolarity:
     positive_data_file:
       path: "../data/rt-polaritydata/whole_dataset/rt-polarity.pos"
@@ -54,3 +55,6 @@ datasets:
     categories:
     shuffle: True
     random_state: 42
+  semeval:
+    # There are two possible domains : RESTAURANT and LAPTOP
+    current_domain: LAPTOP
