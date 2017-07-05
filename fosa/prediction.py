@@ -26,6 +26,11 @@ RESTAURANT_TEST = os.path.join(SEMEVAL_FOLDER, 'restaurant', 'test',
                                'test_gold.xml')
 LAPTOP_TRAIN = os.path.join(SEMEVAL_FOLDER, 'laptop', 'train.xml')
 LAPTOP_TEST = os.path.join(SEMEVAL_FOLDER, 'laptop', 'test', 'test_gold.xml')
+RESTAURANT_ENTITIES = ['FOOD', 'DRINKS', 'SERVICE', 'RESTAURANT', 'AMBIENCE',
+                       'LOCATION']
+LAPTOP_ENTITIES = ['LAPTOP', 'HARDWARE', 'SHIPPING', 'COMPANY', 'SUPPORT',
+                   'SOFTWARE']
+POLARITY = ['positive', 'neutral', 'negative']
 
 # Functions
 # ==================================================
@@ -339,9 +344,76 @@ if __name__ == '__main__':
                               'pred_polarity': pred_polarity},
                              index=[0]), ignore_index=True)
 
+    # Add a column to check if the whole prediction is correct (feature and
+    # pred_feature must be equal AND polarity and pred_polarity must also be
+    # equal)
+    whole_prediction['check'] =\
+        ((whole_prediction.feature == whole_prediction.pred_feature) &
+         (whole_prediction.polarity == whole_prediction.pred_polarity))
+
+    # ==================================================
+    # Effectiveness of the algorithm
+    # ==================================================
+
+    # Construction of dictionary to store new classes
+    # Ex : FOOD, positive will be 0, FOOD, neutral : 1...etc...
+    dict_polarity = {}
+    for key, value in zip(POLARITY, list(range(len(POLARITY)))):
+        dict_polarity[key] = value
+
+    dict_entity_polarity = {}
+    if current_domain == 'RESTAURANT':
+        index = 0
+        for entity in RESTAURANT_ENTITIES:
+            dict_polarity = {}
+            for polarity in POLARITY:
+                dict_polarity[polarity] = index
+                index += 1
+            dict_entity_polarity[entity] = dict_polarity
+    elif current_domain == 'LAPTOP':
+        index = 0
+        for entity in LAPTOP_ENTITIES:
+            dict_polarity = {}
+            for polarity in POLARITY:
+                dict_polarity[polarity] = index
+                index += 1
+            dict_entity_polarity[entity] = dict_polarity
+    else:
+        raise ValueError("The 'current_domain' parameter in the " +
+                         "'config.yml' file must be 'RESTAURANT' " +
+                         "or 'LAPTOP'")
+
+    # Create a new DataFrame to add to whole_prediction. The new DataFrame is
+    # composed of 'new_class' and 'pred_new_class' columns
+    list_of_rows = []
+    for index, row in whole_prediction.iterrows():
+        list_of_rows.append(
+                [dict_entity_polarity[row['feature']][row['polarity']],
+                 dict_entity_polarity[row['pred_feature']][row['pred_polarity']]])
+    df_to_append = pd.DataFrame(data=list_of_rows,
+                                columns=['new_class', 'pred_new_class'])
+    whole_prediction = whole_prediction.assign(
+             new_class=df_to_append['new_class'])
+    whole_prediction = whole_prediction.assign(
+             pred_new_class=df_to_append['pred_new_class'])
+
+    logger.info("Effectiveness of the whole algorithm")
+    logger.info("")
+    class_report = metrics.classification_report(
+            whole_prediction['new_class'],
+            whole_prediction['pred_new_class'])
+    logger.info(class_report)
+
+    logger.info("")
+    for entity, dict_polarity in dict_entity_polarity.items():
+        for polarity, num_class in dict_polarity.items():
+            logger.info("{} : {} - {}".format(num_class, entity, polarity))
+
+    # Save the predictions into a CSV file inside the folder of the current run
     path_prediction_file = os.path.join(FLAGS.checkpoint_dir,
                                         'predictions.csv')
     whole_prediction.to_csv(path_prediction_file, encoding='utf-8',
                             columns=['review_id', 'sentence_id', 'text',
                                      'feature', 'pred_feature',
-                                     'polarity', 'pred_polarity'])
+                                     'polarity', 'pred_polarity',
+                                     'check', 'new_class', 'pred_new_class'])
