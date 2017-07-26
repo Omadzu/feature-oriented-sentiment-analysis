@@ -8,6 +8,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import preprocessing as pp
+import analysis as an
 from tensorflow.contrib import learn
 import csv
 from sklearn import metrics
@@ -156,9 +157,10 @@ def prediction_process_CNN(folderpath_run, config_file, focus):
                 "Accuracy: {:g}".format(
                         correct_predictions/float(len(y_test))))
 
-        logger.info(metrics.classification_report(
+        class_report = metrics.classification_report(
                 y_test, all_predictions,
-                target_names=datasets['target_names']))
+                target_names=datasets['target_names'])
+        logger.info(class_report)
 
         confusion_matrix = ConfusionMatrix(y_test, all_predictions)
         logger.info(confusion_matrix)
@@ -181,7 +183,8 @@ def prediction_process_CNN(folderpath_run, config_file, focus):
     with open(out_path, 'w') as f:
         csv.writer(f).writerows(predictions_human_readable)
 
-    return datasets['data'], all_predictions, datasets['target_names']
+    return (datasets['data'], all_predictions, datasets['target_names'],
+            class_report)
 
 if __name__ == '__main__':
 
@@ -288,14 +291,14 @@ if __name__ == '__main__':
     # CNN_feature predictions
     # ==================================================
 
-    sentences_feature, all_predictions_feature, target_names_feature =\
+    sentences_feature, all_predictions_feature, target_names_feature, feature_class_report =\
         prediction_process_CNN(FLAGS.checkpoint_dir, cfg, 'feature')
 
     # ==================================================
     # CNN_polarity predictions
     # ==================================================
 
-    sentences_polarity, all_predictions_polarity, target_names_polarity =\
+    sentences_polarity, all_predictions_polarity, target_names_polarity, polarity_class_report =\
         prediction_process_CNN(FLAGS.checkpoint_dir, cfg, 'polarity')
 
     # ==================================================
@@ -417,3 +420,10 @@ if __name__ == '__main__':
                                      'feature', 'pred_feature',
                                      'polarity', 'pred_polarity',
                                      'check', 'new_class', 'pred_new_class'])
+
+    # ==================================================
+    # Display charts
+    # ==================================================
+    an.bar_chart_classification_report(feature_class_report, "Effectiveness of CNN_feature")
+    an.bar_chart_classification_report(polarity_class_report, "Effectiveness of CNN_polarity")
+    an.bar_chart_classification_report(class_report, "Effectiveness of whole algorithm")
