@@ -424,6 +424,22 @@ if __name__ == '__main__':
     # ==================================================
     # Display charts
     # ==================================================
-    an.bar_chart_classification_report(feature_class_report, "Effectiveness of CNN_feature")
-    an.bar_chart_classification_report(polarity_class_report, "Effectiveness of CNN_polarity")
-    an.bar_chart_classification_report(class_report, "Effectiveness of whole algorithm")
+    an.bar_chart_classification_report(feature_class_report,
+                                       "Effectiveness of CNN_feature",
+                                       FLAGS.checkpoint_dir)
+    an.bar_chart_classification_report(polarity_class_report,
+                                       "Effectiveness of CNN_polarity",
+                                       FLAGS.checkpoint_dir)
+    an.bar_chart_classification_report(class_report,
+                                       "Effectiveness of whole algorithm",
+                                       FLAGS.checkpoint_dir)
+
+    an.pie_chart_support_distribution(feature_class_report,
+                                      "Data distribution for CNN_feature",
+                                      FLAGS.checkpoint_dir)
+    an.pie_chart_support_distribution(polarity_class_report,
+                                      "Data distribution for CNN_polarity",
+                                      FLAGS.checkpoint_dir)
+    an.pie_chart_support_distribution(class_report,
+                                      "Data distribution for whole algorithm",
+                                      FLAGS.checkpoint_dir)

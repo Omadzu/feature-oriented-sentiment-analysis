@@ -48,6 +48,14 @@ def convert_to_rgb_matplot(rgb_tuple):
     return (red, green, blue)
 
 
+def convert_constant_color():
+    scaled_colors = []
+    for color in COLORS:
+        scaled_colors.append(convert_to_rgb_matplot(color))
+
+    return scaled_colors
+
+
 def lighter(color, percent):
     """
     The 'color' tuple must be between (0, 0, 0) and (255, 255, 255)
@@ -59,12 +67,40 @@ def lighter(color, percent):
     return color + vector * percent
 
 
-def bar_chart_classification_report(classification_report, title):
+def pie_chart_support_distribution(classification_report, title, folder):
     """
-    Plot an histogram which sums up the classification report of the scikit
+    Plot a pie chart which describes the distribution of each class.
+    :param classification_report: Sliced classification report : classes,
+    toPlot, support. toPlot must be a tuple (precision, recall, f1-score)
+    """
+
+    classes, toPlot, support = slice_classification_report(
+            classification_report)
+
+    # Don't take into account the last column which is the total number
+    # of each class
+    labels = classes[0:len(classes)-1]
+    sizes = support[0:len(classes)-1]
+    colors = convert_constant_color()
+
+    fig1, ax1 = plt.subplots()
+    patches, texts, _ = ax1.pie(sizes, labels=labels, autopct='%1.1f%%',
+                                startangle=90, colors=colors)
+    # Equal aspect ratio ensures that pie is drawn as a circle.
+    ax1.axis('equal')
+    ax1.set_title(title)
+    ax1.legend(patches, labels, loc="best")
+
+    plt.savefig(folder+"/"+title.replace(" ", "_")+".png", format="png",
+                dpi=1000)
+
+
+def bar_chart_classification_report(classification_report, title, folder):
+    """
+    Plot a bar graph which sums up the classification report of the scikit
     learn tool.
-    :param cr: Sliced classification report : classes, toPlot, support.
-    toPlot must be a tuple (precision, recall, f1-score)
+    :param classification_report: Sliced classification report : classes,
+    toPlot, support. toPlot must be a tuple (precision, recall, f1-score)
     """
     classes, toPlot, support = slice_classification_report(
             classification_report)
@@ -89,9 +125,10 @@ def bar_chart_classification_report(classification_report, title):
     ax.set_xticks(ind + bar_width / len(classes))
     ax.set_xticklabels(("Precision", "Recall", "F1-score"))
 
-    ax.legend(bars, classes)
+    ax.legend(bars, classes, loc="best")
 
-    plt.show()
+    plt.savefig(folder+"/"+title.replace(" ", "_")+".png", format="png",
+                dpi=1000)
 
 
 def slice_classification_report(classification_report):
