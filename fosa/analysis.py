@@ -9,62 +9,13 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
 import numpy as np
+import preprocessing as pp
 
 # Constants
 # ==================================================
 
-COLORS = [(255, 105, 180),
-          (233, 150, 122),
-          (220, 20, 60),
-          (139, 0, 0),
-          (255, 69, 0),
-          (255, 140, 0),
-          (255, 215, 0),
-          (210, 105, 30),
-          (165, 42, 42),
-          (128, 128, 0),
-          (46, 139, 87),
-          (0, 100, 0),
-          (0, 255, 255),
-          (95, 158, 160),
-          (25, 25, 112),
-          (218, 112, 214),
-          (75, 0, 130)]
-
 # Definitions
 # ==================================================
-
-
-def convert_to_rgb_matplot(rgb_tuple):
-    red, green, blue = rgb_tuple[0], rgb_tuple[1], rgb_tuple[2]
-
-    def operation(color):
-        return float(color/255)
-
-    red = operation(red)
-    green = operation(green)
-    blue = operation(blue)
-
-    return (red, green, blue)
-
-
-def convert_constant_color():
-    scaled_colors = []
-    for color in COLORS:
-        scaled_colors.append(convert_to_rgb_matplot(color))
-
-    return scaled_colors
-
-
-def lighter(color, percent):
-    """
-    The 'color' tuple must be between (0, 0, 0) and (255, 255, 255)
-    From : https://stackoverflow.com/questions/28015400/how-to-fade-color
-    """
-    color = np.array(color)
-    white = np.array([255, 255, 255])
-    vector = white - color
-    return color + vector * percent
 
 
 def pie_chart_support_distribution(classification_report, title, folder):
@@ -81,11 +32,10 @@ def pie_chart_support_distribution(classification_report, title, folder):
     # of each class
     labels = classes[0:len(classes)-1]
     sizes = support[0:len(classes)-1]
-    colors = convert_constant_color()
 
     fig1, ax1 = plt.subplots()
     patches, texts, _ = ax1.pie(sizes, labels=labels, autopct='%1.1f%%',
-                                startangle=90, colors=colors)
+                                startangle=90)
     # Equal aspect ratio ensures that pie is drawn as a circle.
     ax1.axis('equal')
     ax1.set_title(title)
@@ -115,11 +65,10 @@ def bar_chart_classification_report(classification_report, title, folder):
     # and total
     bars = []
     for i in range(len(classes)):
-        bar_i = ax.bar(ind + i * bar_width, toPlot[i], bar_width,
-                       color=convert_to_rgb_matplot(COLORS[i]))
+        bar_i = ax.bar(ind + i * bar_width, toPlot[i], bar_width)
         bars.append(bar_i)
 
-    # Add some text for lavels, title and axes ticks
+    # Add some text for labels, title and axes ticks
     ax.set_ylabel("Percent")
     ax.set_title(title)
     ax.set_xticks(ind + bar_width / len(classes))
@@ -170,6 +119,53 @@ def slice_classification_report(classification_report):
     return classes, plotMat, support
 
 
+def display_stat(filepath):
+    """
+    Statistics from the SemEval 2016 competition, Task 5, Subtask 1 dataset.
+    :param filepath: Path of the dataset SemEval. The path must leads to a
+    folder containing both the training and testing sets.
+    :type filepath: string
+    :return: Pandas.dataframe with the following columns : review_id,
+    sentence_id, text, feature, polarity
+    """
+
+    training_set = pp.parse_XML(filepath+"/train.xml")
+    testing_set = pp.parse_XML(filepath+"/test/test_gold.xml")
+
+    # Some opinions concerns various food, drinks...etc... but the opinion
+    # is the same while the target differ. So deleting duplicates as the scope
+    # of this study does not imply target (OPE in SemEval)
+    training_set = training_set.drop_duplicates()
+    testing_set = testing_set.drop_duplicates()
+
+    # Count # of opinions for each sentence
+    count_opinions_train = training_set['sentence_id'].value_counts()
+    count_opinions_train = count_opinions_train.value_counts()
+    count_opinions_test = testing_set['sentence_id'].value_counts()
+    count_opinions_test = count_opinions_test.value_counts()
+
+    # Display pie charts
+    count_dict_train = count_opinions_train.to_dict()
+    labels = list(count_dict_train.keys())
+    sizes = list(count_dict_train.values())
+
+    fig, ax = plt.subplots()
+    ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90)
+    ax.axis('equal')
+    ax.set_title('Percentage of opinion occurences in a sentence')
+
+    count_dict_test = count_opinions_test.to_dict()
+    labels = list(count_dict_test.keys())
+    sizes = list(count_dict_test.values())
+
+    fig1, ax1 = plt.subplots()
+    ax1.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90)
+    ax1.axis('equal')
+    ax1.set_title('Percentage of opinion occurences in a sentence')
+
+    plt.show()
+
+
 if __name__ == '__main__':
 
     with open("config.yml", 'r') as ymlfile:
@@ -181,75 +177,13 @@ if __name__ == '__main__':
     # Data Parameters
 
     # Eval Parameters
-    tf.flags.DEFINE_string("predictions_csv", "",
-                           "CSV file where predictions are stored")
+    tf.flags.DEFINE_boolean("display_stat", True,
+                            "Display statistics of SemEval dataset")
 
     FLAGS = tf.flags.FLAGS
     FLAGS._parse_flags()
 
-    prediction_file = pd.read_csv(FLAGS.predictions_csv)
+    dataset_filepath = "../data/SemEval/Subtask1/restaurant"
 
-    # Correct predictions
-    # ==================================================
-
-    number_pred = prediction_file.text.size
-
-    # Feature
-    row_ids_same = prediction_file[
-            prediction_file.feature == prediction_file.pred_feature].index
-    number_same = row_ids_same.size
-    perc_correct_feature = number_same/number_pred*100
-
-    # Polarity
-    row_ids_same = prediction_file[
-            prediction_file.polarity == prediction_file.pred_polarity].index
-    number_same = row_ids_same.size
-    perc_correct_polarity = number_same/number_pred*100
-
-    # Whole prediction
-    row_ids_same = prediction_file[
-            prediction_file.new_class == prediction_file.pred_new_class].index
-    number_same = row_ids_same.size
-    perc_correct_whole = number_same/number_pred*100
-
-    # Display pie charts
-    # ==================================================
-
-    # Data to plot
-    labels = 'Correct features', 'Incorrect features'
-    sizes = [perc_correct_feature, 100 - perc_correct_feature]
-    colors = ['gold', 'red']
-    explode = (0.1, 0)  # explode 1st slice
-
-    # Plot
-    plt.pie(sizes, explode=explode, labels=labels, colors=colors,
-            autopct='%1.1f%%', shadow=True, startangle=140)
-
-    plt.axis('equal')
-    plt.show()
-
-    # Data to plot
-    labels = 'Correct polarities', 'Incorrect polarities'
-    sizes = [perc_correct_polarity, 100 - perc_correct_polarity]
-    colors = ['gold', 'red']
-    explode = (0.1, 0)  # explode 1st slice
-
-    # Plot
-    plt.pie(sizes, explode=explode, labels=labels, colors=colors,
-            autopct='%1.1f%%', shadow=True, startangle=140)
-
-    plt.axis('equal')
-    plt.show()
-
-    # Data to plot
-    labels = 'Correct predictions', 'Incorrect predictions'
-    sizes = [perc_correct_whole, 100 - perc_correct_whole]
-    colors = ['gold', 'red']
-    explode = (0.1, 0)  # explode 1st slice
-
-    # Plot
-    plt.pie(sizes, explode=explode, labels=labels, colors=colors,
-            autopct='%1.1f%%', shadow=True, startangle=140)
-
-    plt.axis('equal')
-    plt.show()
+    if FLAGS.display_stat:
+        display_stat(dataset_filepath)

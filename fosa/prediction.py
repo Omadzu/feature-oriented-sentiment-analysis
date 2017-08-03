@@ -32,6 +32,11 @@ RESTAURANT_ENTITIES = ['FOOD', 'DRINKS', 'SERVICE', 'RESTAURANT', 'AMBIENCE',
 LAPTOP_ENTITIES = ['LAPTOP', 'HARDWARE', 'SHIPPING', 'COMPANY', 'SUPPORT',
                    'SOFTWARE']
 POLARITY = ['positive', 'neutral', 'negative']
+RESTAURANT_ASPECTS = [
+        'RESTAURANT#GENERAL', 'RESTAURANT#PRICES', 'RESTAURANT#MISCELLANEOUS',
+        'FOOD#PRICES', 'FOOD#QUALITY', 'FOOD#STYLE_OPTIONS',
+        'DRINKS#PRICES', 'DRINKS#QUALITY', 'DRINKS#STYLE_OPTIONS',
+        'AMBIENCE#GENERAL', 'SERVICE#GENERAL', 'LOCATION#GENERAL']
 
 # Functions
 # ==================================================
@@ -71,7 +76,8 @@ def prediction_process_CNN(folderpath_run, config_file, focus):
     if dataset_name == "semeval":
         current_domain = config_file["datasets"][dataset_name]["current_domain"]
         if current_domain == 'RESTAURANT':
-            datasets = pp.get_dataset_semeval(RESTAURANT_TEST, focus)
+            datasets = pp.get_dataset_semeval(RESTAURANT_TEST, focus,
+                                              FLAGS.aspects)
         elif current_domain == 'LAPTOP':
             datasets = pp.get_dataset_semeval(LAPTOP_TEST, focus)
         else:
@@ -206,6 +212,9 @@ if __name__ == '__main__':
                             "Allow device soft device placement")
     tf.flags.DEFINE_boolean("log_device_placement", False,
                             "Log placement of ops on devices")
+    tf.flags.DEFINE_boolean("aspects",
+                            False,
+                            "Scope widened to aspects and not only entities")
 
     # Precise if predictions is on features or polarity
     tf.flags.DEFINE_string("focus", "", "'feature' or 'polarity'")
@@ -271,9 +280,9 @@ if __name__ == '__main__':
     dataset_name = cfg["datasets"]["default"]
     current_domain = cfg["datasets"][dataset_name]["current_domain"]
     if current_domain == 'RESTAURANT':
-        dataframe_actual = pp.parse_XML(RESTAURANT_TEST)
+        dataframe_actual = pp.parse_XML(RESTAURANT_TEST, FLAGS.aspects)
         dataframe_actual = pp.select_and_simplify_dataset(
-                dataframe_actual, RESTAURANT_TEST)
+                dataframe_actual, RESTAURANT_TEST, FLAGS.aspects)
     elif current_domain == 'LAPTOP':
         dataframe_actual = pp.parse_XML(LAPTOP_TEST)
         dataframe_actual = pp.select_and_simplify_dataset(
@@ -366,13 +375,22 @@ if __name__ == '__main__':
 
     dict_entity_polarity = {}
     if current_domain == 'RESTAURANT':
-        index = 0
-        for entity in RESTAURANT_ENTITIES:
-            dict_polarity = {}
-            for polarity in POLARITY:
-                dict_polarity[polarity] = index
-                index += 1
-            dict_entity_polarity[entity] = dict_polarity
+        if not FLAGS.aspects:
+            index = 0
+            for entity in RESTAURANT_ENTITIES:
+                dict_polarity = {}
+                for polarity in POLARITY:
+                    dict_polarity[polarity] = index
+                    index += 1
+                dict_entity_polarity[entity] = dict_polarity
+        else:
+            index = 0
+            for entity in RESTAURANT_ASPECTS:
+                dict_polarity = {}
+                for polarity in POLARITY:
+                    dict_polarity[polarity] = index
+                    index += 1
+                dict_entity_polarity[entity] = dict_polarity
     elif current_domain == 'LAPTOP':
         index = 0
         for entity in LAPTOP_ENTITIES:

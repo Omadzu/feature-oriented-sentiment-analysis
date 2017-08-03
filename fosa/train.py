@@ -73,7 +73,8 @@ def build_required_data_for_CNN(config_file, focus):
         current_domain =\
             config_file["datasets"][dataset_name]["current_domain"]
         if current_domain == 'RESTAURANT':
-            datasets = pp.get_dataset_semeval(RESTAURANT_TRAIN, focus)
+            datasets = pp.get_dataset_semeval(RESTAURANT_TRAIN, focus,
+                                              FLAGS.aspects)
         elif current_domain == 'LAPTOP':
             datasets = pp.get_dataset_semeval(LAPTOP_TRAIN, focus)
         else:
@@ -397,6 +398,9 @@ if __name__ == '__main__':
     tf.flags.DEFINE_string(
             "negative_data_file", "../data/rt-polaritydata/rt-polarity.neg",
             "Data source for the negative data.")
+    tf.flags.DEFINE_boolean("aspects",
+                            False,
+                            "Scope widened to aspects and not only entities")
 
     # Model Hyperparameters
     tf.flags.DEFINE_boolean(
