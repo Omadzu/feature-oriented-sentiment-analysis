@@ -61,6 +61,7 @@ class TextCNN(object):
                                       [None, num_classes], name="input_y")
         self.dropout_keep_prob = tf.placeholder(tf.float32,
                                                 name="dropout_keep_prob")
+        self.learning_rate = tf.placeholder(tf.float32)
 
         # Keeping track of l2 regularization loss (optional)
         # ==================================================
