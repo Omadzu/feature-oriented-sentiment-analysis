@@ -5,6 +5,7 @@ results of the evaluation part of the algorithm.
 """
 
 import tensorflow as tf
+import matplotlib
 import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
@@ -13,6 +14,7 @@ import preprocessing as pp
 
 # Constants
 # ==================================================
+matplotlib.rcParams['font.size'] = 5.0
 
 # Definitions
 # ==================================================
@@ -152,7 +154,7 @@ def display_stat(filepath):
     fig, ax = plt.subplots()
     ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90)
     ax.axis('equal')
-    ax.set_title('Percentage of opinion occurences in a sentence')
+    ax.set_title('[TRAIN] Percentage of opinion occurences in a sentence')
 
     count_dict_test = count_opinions_test.to_dict()
     labels = list(count_dict_test.keys())
@@ -161,9 +163,153 @@ def display_stat(filepath):
     fig1, ax1 = plt.subplots()
     ax1.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90)
     ax1.axis('equal')
-    ax1.set_title('Percentage of opinion occurences in a sentence')
+    ax1.set_title('[TEST] Percentage of opinion occurences in a sentence')
 
     plt.show()
+
+
+def display_pie(data, folder):
+
+    # Feature distribution
+    # --------------------
+
+    distribution_train = data.groupby('feature').size()
+    labels = distribution_train.index.tolist()
+    sizes = distribution_train.tolist()
+
+    fig, ax = plt.subplots()
+    patches, texts, autotexts = ax.pie(sizes, labels=labels, autopct='%1.1f%%',
+                               startangle=90)
+    # Equal aspect ratio ensures that pie is drawn as a circle.
+    ax.axis('equal')
+
+    this_folder = folder+"/feature_distribution"
+    plt.savefig(this_folder+".png", format="png",
+                dpi=1000)
+
+    # Polarity distribution
+    # ---------------------
+
+    distribution_train = data.groupby('polarity').size()
+    labels = distribution_train.index.tolist()
+    sizes = distribution_train.tolist()
+
+    fig, ax = plt.subplots()
+    patches, texts, autotexts = ax.pie(sizes, labels=labels, autopct='%1.1f%%',
+                               startangle=90)
+    # Equal aspect ratio ensures that pie is drawn as a circle.
+    ax.axis('equal')
+
+    this_folder = folder+"/polarity_distribution"
+    plt.savefig(this_folder+".png", format="png",
+                dpi=1000)
+
+    # Combination distribution
+    # ------------------------
+
+    distribution_train = data.groupby(['feature', 'polarity']).size()
+    labels = distribution_train.index.tolist()
+    sizes = distribution_train.tolist()
+
+    fig, ax = plt.subplots()
+    patches, texts, autotexts = ax.pie(sizes, labels=labels, autopct='%1.1f%%',
+                               startangle=90)
+    # Equal aspect ratio ensures that pie is drawn as a circle.
+    ax.axis('equal')
+
+    this_folder = folder+"/comb_distribution"
+    plt.savefig(this_folder+".png", format="png",
+                dpi=1000)
+
+
+def display_distrib_data():
+
+    folder = "Figures/Data_distribution"
+
+    # Aspect solution
+    # ===============
+
+    # Restaurant domain
+    filepath = "../data/SemEval/Subtask1/restaurant"
+
+    training_set = pp.parse_XML(filepath+"/train.xml", True)
+    testing_set = pp.parse_XML(filepath+"/test/test_gold.xml", True)
+
+    training_set = training_set.drop_duplicates()
+    testing_set = testing_set.drop_duplicates()
+
+    display_pie(training_set, folder+"/Train/Aspect/restaurant")
+    display_pie(testing_set, folder+"/Test/Aspect/restaurant")
+
+    # Laptop domain
+    filepath = "../data/SemEval/Subtask1/laptop"
+
+    training_set = pp.parse_XML(filepath+"/train.xml", True)
+    testing_set = pp.parse_XML(filepath+"/test/test_gold.xml", True)
+
+    training_set = training_set.drop_duplicates()
+    testing_set = testing_set.drop_duplicates()
+
+    display_pie(training_set, folder+"/Train/Aspect/laptop")
+    display_pie(testing_set, folder+"/Test/Aspect/laptop")
+
+    # Entity solution
+    # ===============
+
+    # Restaurant domain
+    filepath = "../data/SemEval/Subtask1/restaurant"
+
+    training_set = pp.parse_XML(filepath+"/train.xml")
+    testing_set = pp.parse_XML(filepath+"/test/test_gold.xml")
+
+    training_set = training_set.drop_duplicates()
+    testing_set = testing_set.drop_duplicates()
+
+    display_pie(training_set, folder+"/Train/Entity/restaurant")
+    display_pie(testing_set, folder+"/Test/Entity/restaurant")
+
+    # Laptop domain
+    filepath = "../data/SemEval/Subtask1/laptop"
+
+    training_set = pp.parse_XML(filepath+"/train.xml")
+    testing_set = pp.parse_XML(filepath+"/test/test_gold.xml")
+
+    training_set = training_set.drop_duplicates()
+    testing_set = testing_set.drop_duplicates()
+
+    display_pie(training_set, folder+"/Train/Entity/laptop")
+    display_pie(testing_set, folder+"/Test/Entity/laptop")
+
+
+def slot3_accuracy():
+
+    # Filepath for restaurant domain predictions
+    filepath = "runs/aspects/word2vec_200-epochs/1501773565/predictions.csv"
+
+    # Load the predictions into a DataFrame
+    predictions = pd.DataFrame.from_csv(filepath)
+    predictions = predictions[['text', 'feature', 'polarity', 'pred_polarity']]
+
+    # For each aspect, determine the accuracy
+    # ---------------------------------------
+    predictions = predictions.groupby('feature')
+
+    acc = {}
+    for key, item in predictions:
+        predictions_one_aspect = predictions.get_group(key)
+        total_number = len(predictions_one_aspect)
+        df = pd.DataFrame(columns=['correct_polarities'])
+        df['correct_polarities'] = (predictions_one_aspect.polarity == predictions_one_aspect.pred_polarity)
+        correct_polarities = df['correct_polarities'].sum()
+        acc[key] = float(correct_polarities)/total_number
+
+    # Get the mean accuracy
+    mean_acc = float(sum(acc.values())) / len(acc)
+    acc["mean"] = mean_acc
+
+    print("Slot 3 - Accuracy measure :")
+    for key, value in acc.items():
+        print(key + " : " + str(value))
 
 
 if __name__ == '__main__':
@@ -177,13 +323,22 @@ if __name__ == '__main__':
     # Data Parameters
 
     # Eval Parameters
-    tf.flags.DEFINE_boolean("display_stat", True,
+    tf.flags.DEFINE_boolean("display_stat", False,
                             "Display statistics of SemEval dataset")
+
+    tf.flags.DEFINE_boolean("slot3", False,
+                            "Display accuracy following the accuracy measure "+ 
+                            "of SemEval competition")
 
     FLAGS = tf.flags.FLAGS
     FLAGS._parse_flags()
 
-    dataset_filepath = "../data/SemEval/Subtask1/restaurant"
+    dataset_filepath_REST = "../data/SemEval/Subtask1/restaurant"
+    dataset_filepath_LAPT = "../data/SemEval/Subtask1/laptop"
 
     if FLAGS.display_stat:
-        display_stat(dataset_filepath)
+        display_stat(dataset_filepath_REST)
+        display_stat(dataset_filepath_LAPT)
+
+    if FLAGS.slot3:
+        slot3_accuracy()
