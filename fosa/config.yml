@@ -57,4 +57,4 @@ datasets:
     random_state: 42
   semeval:
     # There are two possible domains : RESTAURANT and LAPTOP
-    current_domain: LAPTOP
+    current_domain: RESTAURANT

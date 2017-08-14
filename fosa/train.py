@@ -25,6 +25,7 @@ import time
 import datetime
 import logging
 import yaml
+import math
 
 # Project modules
 import preprocessing as pp
@@ -72,7 +73,8 @@ def build_required_data_for_CNN(config_file, focus):
         current_domain =\
             config_file["datasets"][dataset_name]["current_domain"]
         if current_domain == 'RESTAURANT':
-            datasets = pp.get_dataset_semeval(RESTAURANT_TRAIN, focus)
+            datasets = pp.get_dataset_semeval(RESTAURANT_TRAIN, focus,
+                                              FLAGS.aspects)
         elif current_domain == 'LAPTOP':
             datasets = pp.get_dataset_semeval(LAPTOP_TRAIN, focus)
         else:
@@ -180,8 +182,8 @@ def CNN_process(config_file, focus):
 
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
-            # TODO : Other optimizer
-            optimizer = tf.train.AdamOptimizer(1e-3)
+            # TODO : Add learning rate
+            optimizer = tf.train.AdamOptimizer(cnn.learning_rate)
             grads_and_vars = optimizer.compute_gradients(cnn.loss)
             train_op = optimizer.apply_gradients(grads_and_vars,
                                                  global_step=global_step)
@@ -275,7 +277,7 @@ def CNN_process(config_file, focus):
                     logger.info("Glove file has been loaded")
                 sess.run(cnn.W.assign(initW))
 
-            def train_step(x_batch, y_batch):
+            def train_step(x_batch, y_batch, learning_rate):
                 """
                 A single training step
                 """
@@ -283,15 +285,16 @@ def CNN_process(config_file, focus):
                 feed_dict = {
                   cnn.input_x: x_batch,
                   cnn.input_y: y_batch,
-                  cnn.dropout_keep_prob: FLAGS.dropout_keep_prob
+                  cnn.dropout_keep_prob: FLAGS.dropout_keep_prob,
+                  cnn.learning_rate: learning_rate
                 }
                 _, step, summaries, loss, accuracy = sess.run(
                     [train_op, global_step, train_summary_op, cnn.loss,
                      cnn.accuracy],
                     feed_dict)
                 time_str = datetime.datetime.now().isoformat()
-                logger.info("{}: step {}, loss {:g}, acc {:g}".format(
-                             time_str, step, loss, accuracy))
+                logger.info("{}: step {}, loss {:g}, acc {:g}, learning_rate {:g}".format(
+                             time_str, step, loss, accuracy, learning_rate))
                 train_summary_writer.add_summary(summaries, step)
 
             def dev_step(x_batch, y_batch, writer=None):
@@ -320,16 +323,27 @@ def CNN_process(config_file, focus):
             data = list(zip(required_data['x_train'], required_data['y_train']))
             batches = pp.batch_iter(data, FLAGS.batch_size, FLAGS.num_epochs)
 
+            # It uses dynamic learning rate with a high value at the
+            # beginning to speed up the training
+            max_learning_rate = 0.005
+            min_learning_rate = 0.0001
+            decay_speed = FLAGS.decay_coefficient*len(required_data['y_train'])/FLAGS.batch_size
+
             # Training loop. For each batch...
             # ==================================================
 
             logger.info("")
             logger.info("*** TRAINING LOOP ***")
 
+            counter = 0
             for batch in batches:
 
+                learning_rate =\
+                    min_learning_rate + (max_learning_rate - min_learning_rate) * math.exp(-counter/decay_speed)
+                counter += 1
+
                 x_batch, y_batch = zip(*batch)
-                train_step(x_batch, y_batch)
+                train_step(x_batch, y_batch, learning_rate)
                 current_step = tf.train.global_step(sess, global_step)
 
                 # Progress
@@ -384,6 +398,9 @@ if __name__ == '__main__':
     tf.flags.DEFINE_string(
             "negative_data_file", "../data/rt-polaritydata/rt-polarity.neg",
             "Data source for the negative data.")
+    tf.flags.DEFINE_boolean("aspects",
+                            False,
+                            "Scope widened to aspects and not only entities")
 
     # Model Hyperparameters
     tf.flags.DEFINE_boolean(
@@ -429,6 +446,8 @@ if __name__ == '__main__':
     tf.flags.DEFINE_boolean(
             "log_device_placement", False,
             "Log placement of ops on devices")
+    tf.flags.DEFINE_float("decay_coefficient", 2.5,
+                          "Decay coefficient (default: 2.5)")
 
     FLAGS = tf.flags.FLAGS
     FLAGS._parse_flags()

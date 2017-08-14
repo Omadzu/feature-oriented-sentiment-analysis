@@ -12,6 +12,22 @@ fosa\.CNN module
     :undoc-members:
     :show-inheritance:
 
+fosa\.old\-prediction module
+----------------------------
+
+.. automodule:: fosa.old-prediction
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+fosa\.old\_train module
+-----------------------
+
+.. automodule:: fosa.old_train
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 fosa\.prediction module
 -----------------------
 

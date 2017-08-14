@@ -34,6 +34,12 @@ HARDWARE = ['DISPLAY', 'CPU', 'MOTHERBOARD', 'HARD_DISC', 'MEMORY', 'BATTERY',
             'POWER_SUPPLY', 'KEYBOARD', 'MOUSE', 'FANS_COOLING',
             'OPTICAL_DRIVES', 'PORTS', 'GRAPHICS', 'MULTIMEDIA_DEVICES']
 POLARITY = ['positive', 'neutral', 'negative']
+# Define aspects (only for restaurant domain)
+RESTAURANT_ASPECTS = [
+        'RESTAURANT#GENERAL', 'RESTAURANT#PRICES', 'RESTAURANT#MISCELLANEOUS',
+        'FOOD#PRICES', 'FOOD#QUALITY', 'FOOD#STYLE_OPTIONS',
+        'DRINKS#PRICES', 'DRINKS#QUALITY', 'DRINKS#STYLE_OPTIONS',
+        'AMBIENCE#GENERAL', 'SERVICE#GENERAL', 'LOCATION#GENERAL']
 
 
 def clean_str(string):
@@ -237,12 +243,14 @@ def load_embedding_vectors_glove(vocabulary, filename, vector_size):
     return embedding_vectors
 
 
-def parse_XML(filepath):
+def parse_XML(filepath, aspects=False):
     """
     Parse an XML document from the SemEval 2016 competition, Task 5, Subtask 1.
     The targetted documents are the ones with English reviews.
     :param filepath: Path of the dataset SemEval.
     :type filepath: string
+    :param aspects: boolean which means if the algorithm focus on the whole
+    aspects (E#A) or only on some entities
     :return: Pandas.dataframe with the following columns : review_id,
     sentence_id, text, feature, polarity
     """
@@ -271,7 +279,9 @@ def parse_XML(filepath):
 
                 for opinion in opinions:
                     category = opinion.get('category')
-                    category = category.split('#')[0]
+
+                    if not aspects:
+                        category = category.split('#')[0]
                     polarity = opinion.get('polarity')
 
                     list_for_dataframe.append({
@@ -285,7 +295,7 @@ def parse_XML(filepath):
     return dataset_df
 
 
-def select_and_simplify_dataset(parsed_dataset, filepath):
+def select_and_simplify_dataset(parsed_dataset, filepath, aspects=False):
     """
     With the parsed XML document as input, this function selects and replaces
     the entites by the targetted ones (see constants at the top of the file).
@@ -303,8 +313,12 @@ def select_and_simplify_dataset(parsed_dataset, filepath):
     parsed_dataset = parsed_dataset.replace(HARDWARE, 'HARDWARE')
 
     if filepath == RESTAURANT_TRAIN or filepath == RESTAURANT_TEST:
-        parsed_dataset = parsed_dataset[
-                parsed_dataset['feature'].isin(RESTAURANT_ENTITIES)]
+        if not aspects:
+            parsed_dataset = parsed_dataset[
+                    parsed_dataset['feature'].isin(RESTAURANT_ENTITIES)]
+        else:
+            parsed_dataset = parsed_dataset[
+                    parsed_dataset['feature'].isin(RESTAURANT_ASPECTS)]
     elif filepath == LAPTOP_TRAIN or filepath == LAPTOP_TEST:
         parsed_dataset = parsed_dataset[
                 parsed_dataset['feature'].isin(LAPTOP_ENTITIES)]
@@ -317,7 +331,8 @@ def select_and_simplify_dataset(parsed_dataset, filepath):
     return parsed_dataset
 
 
-def get_dataset_semeval(filepath=RESTAURANT_TRAIN, focus='polarity'):
+def get_dataset_semeval(filepath=RESTAURANT_TRAIN, focus='polarity',
+                        aspects=False):
     """
     Parse the XML document of SemEval competition (SemEval 2016, Task 5,
     Subtask 1). The targetted domains are those containing English reviews :
@@ -346,7 +361,7 @@ def get_dataset_semeval(filepath=RESTAURANT_TRAIN, focus='polarity'):
     """
     # TODO : Multilabel for feature and polarity.
 
-    dataset_df = parse_XML(filepath)
+    dataset_df = parse_XML(filepath, aspects)
 
     # The dataset is composed of either features or polarity in order to
     # be feed to the CNN.
@@ -379,18 +394,29 @@ def get_dataset_semeval(filepath=RESTAURANT_TRAIN, focus='polarity'):
         dataset_df = dataset_df[['text', 'feature']]
         dataset_df = dataset_df.rename(columns={'feature': 'y'})
 
-        dataset_df = dataset_df.replace(HARDWARE, 'HARDWARE')
-
         if filepath == RESTAURANT_TRAIN or filepath == RESTAURANT_TEST:
-            datasets['target_names'] = RESTAURANT_ENTITIES
-            dataset_df = dataset_df[dataset_df['y'].isin(RESTAURANT_ENTITIES)]
+            if not aspects:
+                datasets['target_names'] = RESTAURANT_ENTITIES
+                dataset_df = dataset_df[dataset_df['y'].isin(
+                        RESTAURANT_ENTITIES)]
+                range_dict = list(range(len(RESTAURANT_ENTITIES)))
+                restaurant_entities_dict = dict(zip(RESTAURANT_ENTITIES,
+                                                    range_dict))
+                dataset_df = dataset_df.replace({'y':
+                                                restaurant_entities_dict})
+            else:
+                datasets['target_names'] = RESTAURANT_ASPECTS
+                dataset_df = dataset_df[dataset_df['y'].isin(
+                        RESTAURANT_ASPECTS)]
+                range_dict = list(range(len(RESTAURANT_ASPECTS)))
+                restaurant_entities_dict = dict(zip(RESTAURANT_ASPECTS,
+                                                    range_dict))
+                dataset_df = dataset_df.replace({'y':
+                                                restaurant_entities_dict})
 
-            range_dict = list(range(len(RESTAURANT_ENTITIES)))
-            restaurant_entities_dict = dict(zip(RESTAURANT_ENTITIES,
-                                                range_dict))
-            dataset_df = dataset_df.replace({'y':
-                                            restaurant_entities_dict})
         elif filepath == LAPTOP_TRAIN or filepath == LAPTOP_TEST:
+            dataset_df = dataset_df.replace(HARDWARE, 'HARDWARE')
+
             datasets['target_names'] = LAPTOP_ENTITIES
             dataset_df = dataset_df[dataset_df['y'].isin(LAPTOP_ENTITIES)]
 

@@ -8,6 +8,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import preprocessing as pp
+import analysis as an
 from tensorflow.contrib import learn
 import csv
 from sklearn import metrics
@@ -31,6 +32,11 @@ RESTAURANT_ENTITIES = ['FOOD', 'DRINKS', 'SERVICE', 'RESTAURANT', 'AMBIENCE',
 LAPTOP_ENTITIES = ['LAPTOP', 'HARDWARE', 'SHIPPING', 'COMPANY', 'SUPPORT',
                    'SOFTWARE']
 POLARITY = ['positive', 'neutral', 'negative']
+RESTAURANT_ASPECTS = [
+        'RESTAURANT#GENERAL', 'RESTAURANT#PRICES', 'RESTAURANT#MISCELLANEOUS',
+        'FOOD#PRICES', 'FOOD#QUALITY', 'FOOD#STYLE_OPTIONS',
+        'DRINKS#PRICES', 'DRINKS#QUALITY', 'DRINKS#STYLE_OPTIONS',
+        'AMBIENCE#GENERAL', 'SERVICE#GENERAL', 'LOCATION#GENERAL']
 
 # Functions
 # ==================================================
@@ -70,7 +76,8 @@ def prediction_process_CNN(folderpath_run, config_file, focus):
     if dataset_name == "semeval":
         current_domain = config_file["datasets"][dataset_name]["current_domain"]
         if current_domain == 'RESTAURANT':
-            datasets = pp.get_dataset_semeval(RESTAURANT_TEST, focus)
+            datasets = pp.get_dataset_semeval(RESTAURANT_TEST, focus,
+                                              FLAGS.aspects)
         elif current_domain == 'LAPTOP':
             datasets = pp.get_dataset_semeval(LAPTOP_TEST, focus)
         else:
@@ -156,9 +163,10 @@ def prediction_process_CNN(folderpath_run, config_file, focus):
                 "Accuracy: {:g}".format(
                         correct_predictions/float(len(y_test))))
 
-        logger.info(metrics.classification_report(
+        class_report = metrics.classification_report(
                 y_test, all_predictions,
-                target_names=datasets['target_names']))
+                target_names=datasets['target_names'])
+        logger.info(class_report)
 
         confusion_matrix = ConfusionMatrix(y_test, all_predictions)
         logger.info(confusion_matrix)
@@ -181,7 +189,8 @@ def prediction_process_CNN(folderpath_run, config_file, focus):
     with open(out_path, 'w') as f:
         csv.writer(f).writerows(predictions_human_readable)
 
-    return datasets['data'], all_predictions, datasets['target_names']
+    return (datasets['data'], all_predictions, datasets['target_names'],
+            class_report)
 
 if __name__ == '__main__':
 
@@ -203,6 +212,9 @@ if __name__ == '__main__':
                             "Allow device soft device placement")
     tf.flags.DEFINE_boolean("log_device_placement", False,
                             "Log placement of ops on devices")
+    tf.flags.DEFINE_boolean("aspects",
+                            False,
+                            "Scope widened to aspects and not only entities")
 
     # Precise if predictions is on features or polarity
     tf.flags.DEFINE_string("focus", "", "'feature' or 'polarity'")
@@ -268,9 +280,9 @@ if __name__ == '__main__':
     dataset_name = cfg["datasets"]["default"]
     current_domain = cfg["datasets"][dataset_name]["current_domain"]
     if current_domain == 'RESTAURANT':
-        dataframe_actual = pp.parse_XML(RESTAURANT_TEST)
+        dataframe_actual = pp.parse_XML(RESTAURANT_TEST, FLAGS.aspects)
         dataframe_actual = pp.select_and_simplify_dataset(
-                dataframe_actual, RESTAURANT_TEST)
+                dataframe_actual, RESTAURANT_TEST, FLAGS.aspects)
     elif current_domain == 'LAPTOP':
         dataframe_actual = pp.parse_XML(LAPTOP_TEST)
         dataframe_actual = pp.select_and_simplify_dataset(
@@ -288,14 +300,14 @@ if __name__ == '__main__':
     # CNN_feature predictions
     # ==================================================
 
-    sentences_feature, all_predictions_feature, target_names_feature =\
+    sentences_feature, all_predictions_feature, target_names_feature, feature_class_report =\
         prediction_process_CNN(FLAGS.checkpoint_dir, cfg, 'feature')
 
     # ==================================================
     # CNN_polarity predictions
     # ==================================================
 
-    sentences_polarity, all_predictions_polarity, target_names_polarity =\
+    sentences_polarity, all_predictions_polarity, target_names_polarity, polarity_class_report =\
         prediction_process_CNN(FLAGS.checkpoint_dir, cfg, 'polarity')
 
     # ==================================================
@@ -363,13 +375,22 @@ if __name__ == '__main__':
 
     dict_entity_polarity = {}
     if current_domain == 'RESTAURANT':
-        index = 0
-        for entity in RESTAURANT_ENTITIES:
-            dict_polarity = {}
-            for polarity in POLARITY:
-                dict_polarity[polarity] = index
-                index += 1
-            dict_entity_polarity[entity] = dict_polarity
+        if not FLAGS.aspects:
+            index = 0
+            for entity in RESTAURANT_ENTITIES:
+                dict_polarity = {}
+                for polarity in POLARITY:
+                    dict_polarity[polarity] = index
+                    index += 1
+                dict_entity_polarity[entity] = dict_polarity
+        else:
+            index = 0
+            for entity in RESTAURANT_ASPECTS:
+                dict_polarity = {}
+                for polarity in POLARITY:
+                    dict_polarity[polarity] = index
+                    index += 1
+                dict_entity_polarity[entity] = dict_polarity
     elif current_domain == 'LAPTOP':
         index = 0
         for entity in LAPTOP_ENTITIES:
@@ -417,3 +438,26 @@ if __name__ == '__main__':
                                      'feature', 'pred_feature',
                                      'polarity', 'pred_polarity',
                                      'check', 'new_class', 'pred_new_class'])
+
+    # ==================================================
+    # Display charts
+    # ==================================================
+    an.bar_chart_classification_report(feature_class_report,
+                                       "Effectiveness of CNN_feature",
+                                       FLAGS.checkpoint_dir)
+    an.bar_chart_classification_report(polarity_class_report,
+                                       "Effectiveness of CNN_polarity",
+                                       FLAGS.checkpoint_dir)
+    an.bar_chart_classification_report(class_report,
+                                       "Effectiveness of whole algorithm",
+                                       FLAGS.checkpoint_dir)
+
+    an.pie_chart_support_distribution(feature_class_report,
+                                      "Data distribution for CNN_feature",
+                                      FLAGS.checkpoint_dir)
+    an.pie_chart_support_distribution(polarity_class_report,
+                                      "Data distribution for CNN_polarity",
+                                      FLAGS.checkpoint_dir)
+    an.pie_chart_support_distribution(class_report,
+                                      "Data distribution for whole algorithm",
+                                      FLAGS.checkpoint_dir)
